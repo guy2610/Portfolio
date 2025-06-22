@@ -1,0 +1,2 @@
+java Bank.java
+pause

@@ -1,0 +1,3 @@
+please enter the length of the array:0
+this is your array:
+this is your partial sums array:

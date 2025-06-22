@@ -1,0 +1,2 @@
+java StringMain.java
+pause

@@ -1,0 +1,11 @@
+please enter the length of the array:8
+enter a number:3
+enter a number:5
+enter a number:1
+enter a number:-15
+enter a number:10
+enter a number:-1
+enter a number:10
+enter a number:14
+this is your array: 3 5 1 -15 10 -1 10 14
+this is your partial sums array: 3 8 9 -6 4 3 13 27
