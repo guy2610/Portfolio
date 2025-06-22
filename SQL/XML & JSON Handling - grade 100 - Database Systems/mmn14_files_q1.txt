@@ -1,0 +1,98 @@
+--a
+<gallery>
+    <gallery-name>galileo art</gallery-name>
+    <gallery-building-number>5</gallery-building-number>
+    <gallery-floor-number>3</gallery-floor-number>
+    <exhibition>
+        <exhibition-name>כוכבים</exhibition-name>
+        <exhibition-subject>planets</exhibition-subject>
+        <exhibition-curator>דניאלה ארץ</exhibition-curator>
+        <number-of-items>2</number-of-items>
+        <item>
+            <painting>
+                <painting-name>נוגה</painting-name>
+                <painting-artist>נוגה ס</painting-artist>
+                <rectangle>
+                    <length-in-cm>200</length-in-cm>
+                    <width-in-cm>100</width-in-cm>
+                </rectangle>
+            </painting>
+        </item>
+        <item>
+            <painting>
+                <painting-name>מאדים</painting-name>
+                <painting-artist>מ מאדים</painting-artist>
+                <circle>
+                    <diameter-in-cm>125</diameter-in-cm>
+                </circle>
+            </painting>     
+        </item>
+    </exhibition>
+</gallery>
+
+
+
+--b
+{
+    "gallery":{
+        "gallery-name":"galileo art",
+        "gallery-building-number":5,
+        "gallery-floor-number":3,
+        "exhibition":{
+            "exhibition-name":"כוכבים",
+            "exhibition-subject":"planents",
+            "exhibition-curator":"דניאלה פרץ",
+            "number-of-items":2,
+            "item":[
+                {
+                    "painting":{
+                        "painting-name":"נוגה",
+                        "painting-artist":"נוגה ס",
+                        "rectangle":{
+                            "length-in-cm":200,
+                            "width-in-cm":100
+                        }
+                    }
+                },
+                {
+                    "painting":{
+                        "painting-name":"מאדים",
+                        "painting-artist":"מ מאדים",
+                        "circle":{
+                            "diameter-in-cm":125
+                        }
+                    }
+                }
+            ]
+        }
+    }
+}
+
+
+
+--c
+galileo art               instance of                  gallery
+galileo art               gallery-building-number      "5"
+galileo art               gallery-floor-number         "3"
+galileo art               has-exhibition               "כוכבים"
+כוכבים                   instance of                  exhibition
+exhibition                exhibition-subject           "planents"
+exhibition                exhibition-curator           "דניאלה פרץ"
+exhibition                present                      item
+painting                  instance of                  item
+painting1                 instance of                  painting
+painting1                 painting-form                rectangle1
+painting1                 painting-name                "נוגה"
+painting1                 painting-artist              "נוגה ס"
+rectangle                 instance of                  form
+rectangle1                instance of                  rectangle
+rectangle1                length-in-cm                 "200"
+rectangle1                width-in-cm                  "100"
+painting2                 instance of                  painting
+circle1                   painting-form                painting2
+painting2                 painting-name                "מאדים"
+painting2                 painting-artist              "מ מאדים"
+circle                    instance of                  form
+circle1                   instance of                  circle
+circle1                   diameter-in-cm               "125"
+

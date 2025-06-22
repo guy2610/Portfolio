@@ -1,0 +1,13 @@
+#include <stdio.h>
+#include "hi_there"
+
+int main()
+{
+	sayhello();
+	return 0;
+}
+
+void sayhello()
+{
+	printf("hello world");
+}

@@ -1,0 +1,5 @@
+please enter the length of the array:2
+enter a number:3
+enter a number:4
+this is your array: 3 4
+this is your partial sums array: 3 7

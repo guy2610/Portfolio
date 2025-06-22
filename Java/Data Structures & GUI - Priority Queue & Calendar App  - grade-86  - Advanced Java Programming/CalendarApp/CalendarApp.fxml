@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.MenuButton?>
+<?import javafx.scene.control.TextArea?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.GridPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.RowConstraints?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<VBox alignment="TOP_CENTER" maxHeight="-Infinity" maxWidth="-Infinity" minHeight="-Infinity" minWidth="-Infinity" prefHeight="547.0" prefWidth="685.0" xmlns="http://javafx.com/javafx/8.0.171" xmlns:fx="http://javafx.com/fxml/1" fx:controller="CalendarAppController">
+   <children>
+      <TextArea editable="false" prefHeight="42.0" prefWidth="600.0" text="Calendar" wrapText="true">
+         <font>
+            <Font name="Arial Bold Italic" size="24.0" />
+         </font>
+      </TextArea>
+      <HBox alignment="CENTER">
+         <children>
+            <MenuButton fx:id="month" mnemonicParsing="false" text="Month" />
+            <MenuButton fx:id="year" mnemonicParsing="false" text="Year" />
+         </children>
+      </HBox>
+      <HBox prefHeight="24.0" prefWidth="685.0">
+         <children>
+            <TextField alignment="CENTER" editable="false" text=" Sunday">
+               <font>
+                  <Font name="Berlin Sans FB Demi Bold" size="12.0" />
+               </font>
+            </TextField>
+            <TextField alignment="CENTER" editable="false" text="Monday">
+               <font>
+                  <Font name="Berlin Sans FB Demi Bold" size="12.0" />
+               </font>
+            </TextField>
+            <TextField alignment="CENTER" editable="false" text="Tuesday">
+               <font>
+                  <Font name="Berlin Sans FB Demi Bold" size="12.0" />
+               </font>
+            </TextField>
+            <TextField alignment="CENTER" editable="false" text="Wednesday">
+               <font>
+                  <Font name="Berlin Sans FB Demi Bold" size="12.0" />
+               </font>
+            </TextField>
+            <TextField alignment="CENTER" editable="false" text="Thursday">
+               <font>
+                  <Font name="Berlin Sans FB Demi Bold" size="12.0" />
+               </font>
+            </TextField>
+            <TextField alignment="CENTER" editable="false" text="Friday">
+               <font>
+                  <Font name="Berlin Sans FB Demi Bold" size="12.0" />
+               </font>
+            </TextField>
+            <TextField alignment="CENTER" editable="false" text="Saturday">
+               <font>
+                  <Font name="Berlin Sans FB Demi Bold" size="12.0" />
+               </font>
+            </TextField>
+         </children>
+      </HBox>
+      <GridPane fx:id="grid" prefHeight="349.0" prefWidth="685.0">
+        <rowConstraints>
+          <RowConstraints minHeight="10.0" prefHeight="30.0" vgrow="SOMETIMES" />
+        </rowConstraints>
+      </GridPane>
+      <TextArea fx:id="meeting" editable="false" prefHeight="86.0" prefWidth="685.0" wrapText="true" />
+   </children>
+</VBox>

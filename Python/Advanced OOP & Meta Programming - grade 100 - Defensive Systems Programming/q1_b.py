@@ -1,0 +1,1 @@
+print([item.capitalize() for item in ["apple", "banana", "carrot", "black", "box"] if item.lower()[0]=="b"])
