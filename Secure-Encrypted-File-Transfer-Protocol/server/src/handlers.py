@@ -11,7 +11,7 @@ from Crypto.Util.Padding import unpad
 import base64
 import sys
 import  logging
-from src import answers
+from server.src import answers
 import asyncio
 
 async def request_825(payload_info,version,session):
@@ -63,13 +63,14 @@ async def request_826(client_id, payload_info: bytes, version,session):
     session.log.debug("inside request 826")
     store=session.store
     name_in_dict = store.name_of_dict_from_id(client_id)
-    store.clients_info[name_in_dict][2] = str(datetime.datetime.now())
-    store.clients_recent_log[client_id].append(["request_826",str(datetime.datetime.now())])
     if not name_in_dict:
         if session.log.isEnabledFor(logging.DEBUG):
             session.log.debug(store.clients_info)
         session.log.info(f'uuid not in client_info; client_id={client_id!r}')
         return
+
+    store.clients_info[name_in_dict][2] = str(datetime.datetime.now())
+    store.clients_recent_log[client_id].append(["request_826",str(datetime.datetime.now())])
 
     sep = payload_info.find(b'\x00')
     if sep == -1:
@@ -131,7 +132,7 @@ async def request_826(client_id, payload_info: bytes, version,session):
     ciphertext = cipher.encrypt(key)
     tmp=[base64.b64encode(store.clients_info[name][0]).decode('utf-8'),base64.b64encode(store.clients_info[name][1]).decode('utf-8'),store.clients_info[name][2],store.clients_info[name][3]]
     if session.log.isEnabledFor(logging.DEBUG):
-        session.log.debug(f'the user: {name} has this list {tmp}.\nand this is the aes key encrypted by the public key: {base64.b64encode(ciphertext).decode('utf-8')}')
+        session.log.debug(f"the user: {name} has this list {tmp}.\nand this is the aes key encrypted by the public key: {base64.b64encode(ciphertext).decode('utf-8')}")
 
     # send 1602 aes key
     await answers.answer_1602(ciphertext, store.clients_info[name][0], version,session)
@@ -427,7 +428,7 @@ async def request_901(payload_info,version,client_id,session):
     - filename (UTF-8, may include trailing nulls)
 
     Behavior:
-    - Log success and send 1604.
+    - Log failure.
     """
     session.log.debug("inside request 901")
     store = session.store
@@ -445,7 +446,7 @@ async def request_902(payload_info,version,client_id,session):
     - filename (UTF-8)
 
     Behavior:
-    - Logs failure and sends 1604 (transfer finished with error).
+    - Log failure and sends 1604 (transfer finished with error).
     """
     session.log.debug("inside request 902")
     store = session.store
