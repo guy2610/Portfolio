@@ -2,7 +2,7 @@ name: CI - SEFFP Server (pytest)
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ,"stage3-ci"]
   pull_request:
   workflow_dispatch:
 
