@@ -47,14 +47,12 @@ jobs:
         run: |
           set -e
           cd Secure-Encrypted-File-Transfer-Protocol/server
-
-          # Force deterministic port for CI
           echo "1234" > port.info
-
+          echo "port.info=$(cat port.info)"
           export PYTHONPATH=.
           nohup python server_async.py > ../../server_e2e.log 2>&1 &
           echo $! > ../../server_e2e.pid
-          sleep 2
+          sleep 1
       
       - name: Print server log (debug)
         run: |
@@ -65,7 +63,8 @@ jobs:
       - name: Wait for server port
         run: |
           python - <<'PY'
-          import socket, time, sys
+          import socket, time, sys, pathlib
+
           host, port = "127.0.0.1", 1234
           deadline = time.time() + 20
           while time.time() < deadline:
@@ -75,7 +74,14 @@ jobs:
                       sys.exit(0)
               except OSError:
                   time.sleep(0.5)
+
           print("server did not open port in time")
+          log = pathlib.Path("server_e2e.log")
+          if log.exists():
+              print("===== server_e2e.log (tail) =====")
+              print("\n".join(log.read_text(errors="replace").splitlines()[-200:]))
+          else:
+              print("server_e2e.log not found")
           sys.exit(1)
           PY
 
