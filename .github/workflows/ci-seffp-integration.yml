@@ -49,7 +49,9 @@ jobs:
           cd Secure-Encrypted-File-Transfer-Protocol/server
           echo "1234" > port.info
           echo "port.info=$(cat port.info)"
-          export PYTHONPATH=.
+          
+          export PYTHONPATH="${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol"
+
           nohup python server_async.py > ../../server_e2e.log 2>&1 &
           echo $! > ../../server_e2e.pid
           sleep 1
