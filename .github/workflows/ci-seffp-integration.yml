@@ -55,6 +55,12 @@ jobs:
           nohup python server_async.py > ../../server_e2e.log 2>&1 &
           echo $! > ../../server_e2e.pid
           sleep 2
+      
+      - name: Print server log (debug)
+        run: |
+          sleep 1
+          echo "===== server log ====="
+          cat server_e2e.log || true
 
       - name: Wait for server port
         run: |
