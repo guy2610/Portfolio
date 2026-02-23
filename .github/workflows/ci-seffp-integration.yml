@@ -1,0 +1,100 @@
+name: CI - SEFFP Integration (E2E)
+
+on:
+  push:
+    branches: [ "main", "stage3-ci" ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  e2e-ubuntu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install server deps for runtime
+        run: |
+          python -m pip install --upgrade pip
+          pip install pycryptodome
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: "Secure-Encrypted-File-Transfer-Protocol/vcpkg.json"
+          vcpkgDirectory: "${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/vcpkg"
+
+      - name: Configure (client)
+        run: >
+          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seffp
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/vcpkg/scripts/buildsystems/vcpkg.cmake
+
+      - name: Build (client + tests)
+        run: cmake --build build/seffp --config Release
+
+      - name: Start server (background)
+        run: |
+          set -e
+          cd Secure-Encrypted-File-Transfer-Protocol/server
+          export PYTHONPATH=.
+          nohup python server_async.py > ../../server_e2e.log 2>&1 &
+          echo $! > ../../server_e2e.pid
+          sleep 1
+
+      - name: Wait for server port
+        run: |
+          python - <<'PY'
+          import socket, time, sys
+          host, port = "127.0.0.1", 1234
+          deadline = time.time() + 20
+          while time.time() < deadline:
+            try:
+              with socket.create_connection((host, port), timeout=1):
+                print("server is up")
+                sys.exit(0)
+            except OSError:
+              time.sleep(0.5)
+          print("server did not open port in time")
+          sys.exit(1)
+          PY
+
+      - name: Run E2E client (headless, isolated workdir)
+        run: |
+          set -e
+          WORKDIR="$(pwd)/e2e_workdir"
+          mkdir -p "$WORKDIR"
+          echo "127.0.0.1:1234" > "$WORKDIR/transfer.info"
+          echo "ci_user" >> "$WORKDIR/transfer.info"
+          echo "hello from ci" > "$WORKDIR/test.txt"
+
+          # Linux exe path
+          CLIENT_BIN="$(pwd)/build/seffp/seffp_client"
+          cp "$CLIENT_BIN" "$WORKDIR/"
+
+          cd "$WORKDIR"
+          ./seffp_client --info --files=test.txt
+
+      - name: Stop server + print logs on failure
+        if: failure()
+        run: |
+          set +e
+          if [ -f server_e2e.pid ]; then kill "$(cat server_e2e.pid)" || true; fi
+          echo "===== server log ====="
+          tail -n 400 server_e2e.log || true
+
+      - name: Stop server
+        if: always()
+        run: |
+          set +e
+          if [ -f server_e2e.pid ]; then kill "$(cat server_e2e.pid)" || true; fi
