@@ -114,62 +114,6 @@ jobs:
           cd e2e_workdir
           ./seffp_client --info --files=test.txt,test2.txt
 
-      - name: Stop server (graceful + fallback)
-        if: always()
-        run: |
-          set +e
-          PID=$(cat server_e2e.pid 2>/dev/null)
-
-          echo "Stopping server PID=$PID"
-
-          if [ -n "$PID" ]; then
-            ps -p "$PID" -o pid,ppid,pgid,sid,cmd || true
-
-            kill -INT "$PID" 2>/dev/null
-
-            for i in $(seq 1 80); do
-              kill -0 "$PID" 2>/dev/null || { echo "server stopped cleanly"; break; }
-              sleep 0.2
-            done
-
-            if kill -0 "$PID" 2>/dev/null; then
-              echo "Escalating kill"
-              kill -TERM "$PID" 2>/dev/null
-              sleep 0.5
-              kill -KILL "$PID" 2>/dev/null
-            fi
-          fi
-
-          # Ensure nothing remains
-          pkill -f "python .*server_async\.py" 2>/dev/null || true
-          sleep 0.2
-
-          if pgrep -f "python .*server_async\.py" >/dev/null; then
-            echo "Server still running"
-            pgrep -af "python .*server_async\.py"
-            exit 1
-          fi
-
-          echo "Server fully stopped"
-          tail -n 200 server_e2e.log || true
-
-      - name: Assert clients_info persisted
-        run: |
-          set -e
-          FILE="Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json"
-
-          if [ ! -f "$FILE" ]; then
-            echo "clients_info.json not found"
-            exit 1
-          fi
-
-          python - <<PY
-          import json, pathlib
-          p = pathlib.Path("$FILE")
-          data = json.loads(p.read_text())
-          assert isinstance(data, dict)
-          print("clients_info entries:", len(data))
-          PY
       - name: Parallel clients upload (5 clients)
         run: |
           set -euo pipefail
@@ -229,3 +173,60 @@ jobs:
             fi
           done
           echo "parallel uploads exist"
+
+      - name: Stop server (graceful + fallback)
+        if: always()
+        run: |
+          set +e
+          PID=$(cat server_e2e.pid 2>/dev/null)
+
+          echo "Stopping server PID=$PID"
+
+          if [ -n "$PID" ]; then
+            ps -p "$PID" -o pid,ppid,pgid,sid,cmd || true
+
+            kill -INT "$PID" 2>/dev/null
+
+            for i in $(seq 1 80); do
+              kill -0 "$PID" 2>/dev/null || { echo "server stopped cleanly"; break; }
+              sleep 0.2
+            done
+
+            if kill -0 "$PID" 2>/dev/null; then
+              echo "Escalating kill"
+              kill -TERM "$PID" 2>/dev/null
+              sleep 0.5
+              kill -KILL "$PID" 2>/dev/null
+            fi
+          fi
+
+          # Ensure nothing remains
+          pkill -f "python .*server_async\.py" 2>/dev/null || true
+          sleep 0.2
+
+          if pgrep -f "python .*server_async\.py" >/dev/null; then
+            echo "Server still running"
+            pgrep -af "python .*server_async\.py"
+            exit 1
+          fi
+
+          echo "Server fully stopped"
+          tail -n 200 server_e2e.log || true
+
+      - name: Assert clients_info persisted
+        run: |
+          set -e
+          FILE="Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json"
+
+          if [ ! -f "$FILE" ]; then
+            echo "clients_info.json not found"
+            exit 1
+          fi
+
+          python - <<PY
+          import json, pathlib
+          p = pathlib.Path("$FILE")
+          data = json.loads(p.read_text())
+          assert isinstance(data, dict)
+          print("clients_info entries:", len(data))
+          PY
