@@ -50,8 +50,8 @@ jobs:
           echo "1234" > port.info
           echo "port.info=$(cat port.info)"
           
-          export PYTHONPATH="${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol"
-
+          export PYTHONPATH=${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server
+          
           nohup python server_async.py > ../../server_e2e.log 2>&1 &
           echo $! > ../../server_e2e.pid
           sleep 1
@@ -102,7 +102,12 @@ jobs:
 
           cd "$WORKDIR"
           ./seffp_client --info --files=test.txt
-
+      - name: Run client second time (SSO relogin)
+        run: |
+          set -e
+          cd e2e_workdir
+          ./seffp_client --info --files=test.txt
+          
       - name: Stop server + print logs on failure
         if: failure()
         run: |
