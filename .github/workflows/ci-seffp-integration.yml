@@ -10,7 +10,6 @@ jobs:
   e2e-ubuntu:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     env:
       VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
@@ -23,7 +22,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install server deps for runtime
+      - name: Install server deps
         run: |
           python -m pip install --upgrade pip
           pip install pycryptodome
@@ -34,37 +33,33 @@ jobs:
           vcpkgJsonGlob: "Secure-Encrypted-File-Transfer-Protocol/vcpkg.json"
           vcpkgDirectory: "${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/vcpkg"
 
-      - name: Configure (client)
+      - name: Configure client
         run: >
           cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seffp
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/vcpkg/scripts/buildsystems/vcpkg.cmake
 
-      - name: Build (client + tests)
+      - name: Build client
         run: cmake --build build/seffp --config Release
 
       - name: Start server (background)
         run: |
+          set -e
           cd Secure-Encrypted-File-Transfer-Protocol/server
           echo "1234" > port.info
+          export PYTHONPATH="${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server"
 
-          export PYTHONPATH=${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server
-
-          setsid python server_async.py > ../../server_e2e.log 2>&1 &
+          nohup python -u server_async.py > ../../server_e2e.log 2>&1 &
           echo $! > ../../server_e2e.pid
           sleep 1
-      
-      - name: Print server log (debug)
-        run: |
-          sleep 1
-          echo "===== server log ====="
-          cat server_e2e.log || true
+
+          echo "Server PID=$(cat ../../server_e2e.pid)"
+          ps -p "$(cat ../../server_e2e.pid)" -o pid,ppid,pgid,sid,cmd
 
       - name: Wait for server port
         run: |
           python - <<'PY'
-          import socket, time, sys, pathlib
-
+          import socket, time, sys
           host, port = "127.0.0.1", 1234
           deadline = time.time() + 20
           while time.time() < deadline:
@@ -74,18 +69,11 @@ jobs:
                       sys.exit(0)
               except OSError:
                   time.sleep(0.5)
-
           print("server did not open port in time")
-          log = pathlib.Path("server_e2e.log")
-          if log.exists():
-              print("===== server_e2e.log (tail) =====")
-              print("\n".join(log.read_text(errors="replace").splitlines()[-200:]))
-          else:
-              print("server_e2e.log not found")
           sys.exit(1)
           PY
 
-      - name: Run E2E client (headless, isolated workdir)
+      - name: Run first client (register + upload)
         run: |
           set -e
           WORKDIR="$(pwd)/e2e_workdir"
@@ -94,23 +82,17 @@ jobs:
           echo "ci_user" >> "$WORKDIR/transfer.info"
           echo "hello from ci" > "$WORKDIR/test.txt"
 
-          # Linux exe path
           CLIENT_BIN="$(pwd)/build/seffp/seffp_client"
           cp "$CLIENT_BIN" "$WORKDIR/"
 
           cd "$WORKDIR"
           ./seffp_client --info --files=test.txt
-      
-      - name: Run client second time (SSO relogin)
+
+      - name: Run second client (relogin)
         run: |
           set -e
           cd e2e_workdir
           ./seffp_client --info --files=test.txt > second_run.log
-
-      - name: Assert relogin (no registration on second run)
-        run: |
-          set -e
-          cd e2e_workdir
 
           echo "==== Second run output ===="
           cat second_run.log
@@ -120,88 +102,71 @@ jobs:
             exit 1
           fi
 
-
           if ! grep -q "827" second_run.log; then
             echo "Relogin (827) not detected"
             exit 1
           fi
-      
-      - name: Create second file
-        run: |
-          echo "another file" > e2e_workdir/test2.txt
 
-      - name: Run client multi-file upload
+      - name: Multi-file upload
         run: |
           set -e
+          echo "another file" > e2e_workdir/test2.txt
           cd e2e_workdir
           ./seffp_client --info --files=test.txt,test2.txt
 
-      - name: Stop server + print logs on failure
-        if: failure()
+      - name: Stop server (graceful + fallback)
+        if: always()
         run: |
           set +e
-          if [ -f server_e2e.pid ]; then kill "$(cat server_e2e.pid)" || true; fi
-          echo "===== server log ====="
-          tail -n 400 server_e2e.log || true
-
-      - name: Stop server (graceful SIGINT)
-        run: |
-          set +e
-          PID=$(cat server_e2e.pid)
+          PID=$(cat server_e2e.pid 2>/dev/null)
 
           echo "Stopping server PID=$PID"
-          ps -p "$PID" -o pid,ppid,pgid,sid,cmd || true
 
-          kill -INT "$PID" 2>/dev/null
+          if [ -n "$PID" ]; then
+            ps -p "$PID" -o pid,ppid,pgid,sid,cmd || true
 
-          for i in $(seq 1 50); do
-            kill -0 "$PID" 2>/dev/null || { 
-              echo "server stopped cleanly"
-              exit 0
-            }
-            sleep 0.2
-          done
+            kill -INT "$PID" 2>/dev/null
 
-          echo "server did not stop, forcing kill"
-          kill -TERM "$PID" 2>/dev/null
-          sleep 1
-          kill -KILL "$PID" 2>/dev/null
+            for i in $(seq 1 80); do
+              kill -0 "$PID" 2>/dev/null || { echo "server stopped cleanly"; break; }
+              sleep 0.2
+            done
 
-          exit 1
-  
-      - name: Start server again (background)
-        run: |
-          set -e
-          cd Secure-Encrypted-File-Transfer-Protocol/server
-          echo "1234" > port.info
-          export PYTHONPATH="${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server"
-          setsid python server_async.py > ../../server_e2e.log 2>&1 &
-          echo $! > ../../server_e2e.pid
-          sleep 1
-  
-      - name: Assert clients_info persisted (debug on fail)
-        run: |
-          set -e
-          if [ ! -f Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json ]; then
-            echo "clients_info.json not found"
-            echo "==== server_e2e.log (tail) ===="
-            tail -n 200 server_e2e.log || true
-            echo "==== server directory tree ===="
-            ls -la Secure-Encrypted-File-Transfer-Protocol/server || true
-            ls -la Secure-Encrypted-File-Transfer-Protocol/server/data || true
+            if kill -0 "$PID" 2>/dev/null; then
+              echo "Escalating kill"
+              kill -TERM "$PID" 2>/dev/null
+              sleep 0.5
+              kill -KILL "$PID" 2>/dev/null
+            fi
+          fi
+
+          # Ensure nothing remains
+          pkill -f "python .*server_async\.py" 2>/dev/null || true
+          sleep 0.2
+
+          if pgrep -f "python .*server_async\.py" >/dev/null; then
+            echo "Server still running"
+            pgrep -af "python .*server_async\.py"
             exit 1
           fi
-          python - <<'PY'
+
+          echo "Server fully stopped"
+          tail -n 200 server_e2e.log || true
+
+      - name: Assert clients_info persisted
+        run: |
+          set -e
+          FILE="Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json"
+
+          if [ ! -f "$FILE" ]; then
+            echo "clients_info.json not found"
+            exit 1
+          fi
+
+          python - <<PY
           import json, pathlib
-          p = pathlib.Path("Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json")
+          p = pathlib.Path("$FILE")
           data = json.loads(p.read_text())
           assert isinstance(data, dict)
           print("clients_info entries:", len(data))
           PY
-      
-      - name: Final stop server
-        if: always()
-        run: |
-          if [ -f server_e2e.pid ]; then
-            kill "$(cat server_e2e.pid)" || true
-          fi
