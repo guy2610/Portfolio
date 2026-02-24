@@ -45,14 +45,12 @@ jobs:
 
       - name: Start server (background)
         run: |
-          set -e
           cd Secure-Encrypted-File-Transfer-Protocol/server
           echo "1234" > port.info
-          echo "port.info=$(cat port.info)"
-          
+
           export PYTHONPATH=${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server
-          
-          python server_async.py > ../../server_e2e.log 2>&1 &
+
+          setsid python server_async.py > ../../server_e2e.log 2>&1 &
           echo $! > ../../server_e2e.pid
           sleep 1
       
@@ -148,37 +146,27 @@ jobs:
 
       - name: Stop server (graceful SIGINT)
         run: |
-          set -e
+          set +e
           PID=$(cat server_e2e.pid)
 
-          echo "PID=$PID"
+          echo "Stopping server PID=$PID"
           ps -p "$PID" -o pid,ppid,pgid,sid,cmd || true
 
-          PGID=$(ps -o pgid= -p "$PID" | tr -d ' ')
-          if [ -z "$PGID" ]; then
-            echo "could not determine PGID"
-            exit 1
-          fi
+          kill -INT "$PID" 2>/dev/null
 
-          echo "PGID=$PGID"
-          
-          kill -INT "-$PGID" || true
-
-          for i in $(seq 1 80); do
-            if kill -0 "$PID" 2>/dev/null; then
-              sleep 0.2
-            else
+          for i in $(seq 1 50); do
+            kill -0 "$PID" 2>/dev/null || { 
               echo "server stopped cleanly"
               exit 0
-            fi
+            }
+            sleep 0.2
           done
 
-          echo "server did not stop, escalating"
-          kill -TERM "-$PGID" || true
+          echo "server did not stop, forcing kill"
+          kill -TERM "$PID" 2>/dev/null
           sleep 1
-          kill -KILL "-$PGID" || true
+          kill -KILL "$PID" 2>/dev/null
 
-          ps -p "$PID" -o pid,ppid,pgid,sid,cmd || true
           exit 1
   
       - name: Start server again (background)
