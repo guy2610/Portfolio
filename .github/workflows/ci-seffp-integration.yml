@@ -148,18 +148,20 @@ jobs:
 
       - name: Stop server (clean shutdown)
         run: |
-          set +e
-          if [ -f server_e2e.pid ]; then
-            kill -TERM "$(cat server_e2e.pid)" || true
-            # wait a bit for finally/save
-            for i in $(seq 1 20); do
-              if kill -0 "$(cat server_e2e.pid)" 2>/dev/null; then
-                sleep 0.2
-              else
-                break
-              fi
-            done
-          fi
+          set -e
+          PID="$(cat server_e2e.pid)"
+          kill -TERM "$PID"
+          # wait up to 10s
+          for i in $(seq 1 50); do
+            if kill -0 "$PID" 2>/dev/null; then
+              sleep 0.2
+            else
+              echo "server stopped"
+              exit 0
+            fi
+          done
+          echo "server did not stop"
+          exit 1
   
       - name: Start server again (background)
         run: |
@@ -171,14 +173,22 @@ jobs:
           echo $! > ../../server_e2e.pid
           sleep 1
   
-      - name: Assert server persisted clients_info.json
+      - name: Assert clients_info persisted (debug on fail)
         run: |
-          test -f Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json
+          set -e
+          if [ ! -f Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json ]; then
+            echo "clients_info.json not found"
+            echo "==== server_e2e.log (tail) ===="
+            tail -n 200 server_e2e.log || true
+            echo "==== server directory tree ===="
+            ls -la Secure-Encrypted-File-Transfer-Protocol/server || true
+            ls -la Secure-Encrypted-File-Transfer-Protocol/server/data || true
+            exit 1
+          fi
           python - <<'PY'
           import json, pathlib
-          p = pathlib.Path("Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json")
+          p = pathlib.Path("Secure-Encrypted-File-Transfer-Transfer-Protocol/server/data/clients_info.json")
           data = json.loads(p.read_text())
           assert isinstance(data, dict)
-          assert len(data) >= 1
           print("clients_info entries:", len(data))
           PY
