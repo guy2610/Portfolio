@@ -149,10 +149,9 @@ jobs:
       - name: Stop server (graceful SIGINT)
         run: |
           set -e
-          PID="$(cat server_e2e.pid)"
+          PID=$(cat server_e2e.pid)
           kill -INT "$PID"
 
-          # wait until process exits
           for i in $(seq 1 50); do
             if kill -0 "$PID" 2>/dev/null; then
               sleep 0.2
@@ -171,7 +170,7 @@ jobs:
           cd Secure-Encrypted-File-Transfer-Protocol/server
           echo "1234" > port.info
           export PYTHONPATH="${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server"
-          nohup python server_async.py > ../../server_e2e_restart.log 2>&1 &
+          python server_async.py > ../../server_e2e.log 2>&1 &
           echo $! > ../../server_e2e.pid
           sleep 1
   
