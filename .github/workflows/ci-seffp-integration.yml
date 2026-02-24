@@ -146,20 +146,22 @@ jobs:
           echo "===== server log ====="
           tail -n 400 server_e2e.log || true
 
-      - name: Stop server (clean shutdown)
+      - name: Stop server (graceful SIGINT)
         run: |
           set -e
           PID="$(cat server_e2e.pid)"
-          kill -TERM "$PID"
-          # wait up to 10s
+          kill -INT "$PID"
+
+          # wait until process exits
           for i in $(seq 1 50); do
             if kill -0 "$PID" 2>/dev/null; then
               sleep 0.2
             else
-              echo "server stopped"
+              echo "server stopped cleanly"
               exit 0
             fi
           done
+
           echo "server did not stop"
           exit 1
   
