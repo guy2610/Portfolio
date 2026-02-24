@@ -146,8 +146,39 @@ jobs:
           echo "===== server log ====="
           tail -n 400 server_e2e.log || true
 
-      - name: Stop server
-        if: always()
+      - name: Stop server (clean shutdown)
         run: |
           set +e
-          if [ -f server_e2e.pid ]; then kill "$(cat server_e2e.pid)" || true; fi
+          if [ -f server_e2e.pid ]; then
+            kill -TERM "$(cat server_e2e.pid)" || true
+            # wait a bit for finally/save
+            for i in $(seq 1 20); do
+              if kill -0 "$(cat server_e2e.pid)" 2>/dev/null; then
+                sleep 0.2
+              else
+                break
+              fi
+            done
+          fi
+  
+      - name: Start server again (background)
+        run: |
+          set -e
+          cd Secure-Encrypted-File-Transfer-Protocol/server
+          echo "1234" > port.info
+          export PYTHONPATH="${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server"
+          nohup python server_async.py > ../../server_e2e_restart.log 2>&1 &
+          echo $! > ../../server_e2e.pid
+          sleep 1
+  
+      - name: Assert server persisted clients_info.json
+        run: |
+          test -f Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json
+          python - <<'PY'
+          import json, pathlib
+          p = pathlib.Path("Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json")
+          data = json.loads(p.read_text())
+          assert isinstance(data, dict)
+          assert len(data) >= 1
+          print("clients_info entries:", len(data))
+          PY
