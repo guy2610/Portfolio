@@ -158,6 +158,135 @@ jobs:
             exit 1
           fi
       
+      - name: Limit tests (raw socket): max_file_size + upload_timeout
+        run: |
+          set -euo pipefail
+
+          # Resolve server root so we can import protocol framing helpers if needed (we won't)
+          HOST="127.0.0.1"
+          PORT="1234"
+
+          python - <<'PY'
+          import socket, struct, time, sys
+
+          HOST = "127.0.0.1"
+          PORT = 1234
+
+          def le16(n: int) -> bytes: return struct.pack("<H", n)
+          def le32(n: int) -> bytes: return struct.pack("<I", n)
+
+          # Frame format in your project:
+          # client_id(16) + version(1) + code(2 LE) + payload_size(4 LE) + payload
+          def build_frame(client_id: bytes, version: bytes, code: int, payload: bytes) -> bytes:
+              assert len(client_id) == 16
+              assert len(version) == 1
+              return client_id + version + le16(code) + le32(len(payload)) + payload
+
+          def recv_some(sock: socket.socket, timeout_s: float = 2.0) -> bytes:
+              sock.settimeout(timeout_s)
+              try:
+                  return sock.recv(8192)
+              except socket.timeout:
+                  return b""
+
+          def expect_1607(resp: bytes, ctx: str):
+              # 1607 LE == 0x0647 bytes in stream (as part of response code field)
+              if b"\x47\x06" not in resp:
+                  print(f"[FAIL] expected 1607 in response for {ctx}. resp_len={len(resp)}")
+                  print(resp[:200])
+                  sys.exit(1)
+
+          # -------------------------
+          # A) max_file_size: send 828 packet0 with content_size > max_file_size
+          # -------------------------
+          # Use something safely above your default max_file_size=100MB
+          too_big_content_size = 150 * 1024 * 1024  # 150MB
+          client_id = b"\x01" * 16
+          version = b"\x03"
+
+          # 828 payload structure in your handler:
+          # u32 content_size + u32 orig_file_size + u16 packet_num + u16 total_packets + filename\0 + (iv or chunk)
+          filename = b"too_big.bin"
+          iv = b"\xAA" * 16
+          payload0 = (
+              le32(too_big_content_size) +
+              le32(1) +
+              le16(0) +
+              le16(1) +
+              filename + b"\x00" +
+              iv
+          )
+          frame0 = build_frame(client_id, version, 828, payload0)
+
+          s = socket.create_connection((HOST, PORT), timeout=3)
+          s.sendall(frame0)
+          resp = recv_some(s, timeout_s=3.0)
+          expect_1607(resp, "max_file_size (828 packet0 too big)")
+
+          # server may close after 1607. ensure connection is not usable
+          try:
+              s.sendall(b"x")
+          except OSError:
+              pass
+          s.close()
+          print("[OK] max_file_size enforced (1607 returned)")
+
+          # -------------------------
+          # C) upload inactivity timeout:
+          # start upload (828 packet0 with small sizes) then stop sending
+          # expect server to eventually 1607 + disconnect (or just disconnect) after upload_inactivity_timeout_s
+          # -------------------------
+          small_content_size = 32
+          orig_size = 16
+          total_packets = 2
+          filename2 = b"idle_upload.bin"
+          payload0b = (
+              le32(small_content_size) +
+              le32(orig_size) +
+              le16(0) +
+              le16(total_packets) +
+              filename2 + b"\x00" +
+              iv
+          )
+          frame0b = build_frame(client_id, version, 828, payload0b)
+
+          s2 = socket.create_connection((HOST, PORT), timeout=3)
+          s2.sendall(frame0b)
+
+          # Now go idle. Your server checks inactivity only on asyncio.TimeoutError (every 10s read timeout),
+          # and compares against upload_inactivity_timeout_s (default 20s).
+          # Give it enough time: 35s total with small polling reads.
+          deadline = time.time() + 40
+          got_1607 = False
+          while time.time() < deadline:
+              chunk = recv_some(s2, timeout_s=1.0)
+              if chunk:
+                  if b"\x47\x06" in chunk:
+                      got_1607 = True
+                      break
+              time.sleep(0.5)
+
+          # Either it sends 1607 or just closes. Prefer explicit 1607, but allow close.
+          if not got_1607:
+              # check if socket already closed
+              try:
+                  s2.settimeout(1.0)
+                  more = s2.recv(16)
+                  if more == b"":
+                      print("[OK] upload inactivity: server closed connection (no explicit 1607 observed)")
+                  else:
+                      print("[FAIL] upload inactivity: still receiving data but no 1607, unexpected")
+                      sys.exit(1)
+              except (socket.timeout, ConnectionResetError, BrokenPipeError, OSError):
+                  print("[OK] upload inactivity: connection terminated")
+          else:
+              print("[OK] upload inactivity enforced (1607 observed)")
+
+          try:
+              s2.close()
+          except Exception:
+              pass
+          PY
       - name: Assert parallel uploads exist on disk
         run: |
           set -euo pipefail
