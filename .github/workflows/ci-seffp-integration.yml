@@ -170,3 +170,62 @@ jobs:
           assert isinstance(data, dict)
           print("clients_info entries:", len(data))
           PY
+      - name: Parallel clients upload (5 clients)
+        run: |
+          set -euo pipefail
+          CLIENT_BIN="$(pwd)/build/seffp/seffp_client"
+
+          BASE="$(pwd)/e2e_parallel"
+          rm -rf "$BASE"
+          mkdir -p "$BASE"
+
+          N=5
+          for i in $(seq 1 $N); do
+            W="$BASE/u$i"
+            mkdir -p "$W"
+            echo "127.0.0.1:1234" > "$W/transfer.info"
+            echo "ci_user_$i" >> "$W/transfer.info"
+            echo "hello from client $i" > "$W/file_$i.txt"
+            cp "$CLIENT_BIN" "$W/"
+          done
+
+          pids=""
+          for i in $(seq 1 $N); do
+            (
+              cd "$BASE/u$i"
+              ./seffp_client --info --files="file_$i.txt" > "run.log" 2>&1
+            ) &
+            pids="$pids $!"
+          done
+
+          fail=0
+          for p in $pids; do
+            if ! wait "$p"; then
+              fail=1
+            fi
+          done
+
+          if [ "$fail" -ne 0 ]; then
+            echo "At least one client failed. Dump logs:"
+            for i in $(seq 1 $N); do
+              echo "==== client $i log ===="
+              cat "$BASE/u$i/run.log" || true
+            done
+            exit 1
+          fi
+      
+      - name: Assert parallel uploads exist on disk
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 5); do
+            P="Secure-Encrypted-File-Transfer-Protocol/server/data/uploads/ci_user_$i/file_$i.txt"
+            if [ ! -f "$P" ]; then
+              echo "Missing: $P"
+              echo "==== server log tail ===="
+              tail -n 250 server_e2e.log || true
+              echo "==== uploads tree ===="
+              find Secure-Encrypted-File-Transfer-Protocol/server/data/uploads -maxdepth 3 -type f -print || true
+              exit 1
+            fi
+          done
+          echo "parallel uploads exist"
