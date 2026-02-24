@@ -150,7 +150,19 @@ jobs:
         run: |
           set -e
           PID=$(cat server_e2e.pid)
-          kill -INT -"$PID" || true
+
+          echo "PID=$PID"
+          ps -p "$PID" -o pid,ppid,pgid,sid,cmd || true
+
+          PGID=$(ps -o pgid= -p "$PID" | tr -d ' ')
+          if [ -z "$PGID" ]; then
+            echo "could not determine PGID"
+            exit 1
+          fi
+
+          echo "PGID=$PGID"
+          
+          kill -INT "-$PGID" || true
 
           for i in $(seq 1 80); do
             if kill -0 "$PID" 2>/dev/null; then
@@ -161,8 +173,12 @@ jobs:
             fi
           done
 
-          echo "server did not stop"
-          ps -p "$PID" -o pid,ppid,cmd || true
+          echo "server did not stop, escalating"
+          kill -TERM "-$PGID" || true
+          sleep 1
+          kill -KILL "-$PGID" || true
+
+          ps -p "$PID" -o pid,ppid,pgid,sid,cmd || true
           exit 1
   
       - name: Start server again (background)
