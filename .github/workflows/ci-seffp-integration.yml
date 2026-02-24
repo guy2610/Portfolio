@@ -52,7 +52,7 @@ jobs:
           
           export PYTHONPATH=${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server
           
-          nohup python server_async.py > ../../server_e2e.log 2>&1 &
+          python server_async.py > ../../server_e2e.log 2>&1 &
           echo $! > ../../server_e2e.pid
           sleep 1
       
@@ -188,8 +188,15 @@ jobs:
           fi
           python - <<'PY'
           import json, pathlib
-          p = pathlib.Path("Secure-Encrypted-File-Transfer-Transfer-Protocol/server/data/clients_info.json")
+          p = pathlib.Path("Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json")
           data = json.loads(p.read_text())
           assert isinstance(data, dict)
           print("clients_info entries:", len(data))
           PY
+      
+      - name: Final stop server
+        if: always()
+        run: |
+          if [ -f server_e2e.pid ]; then
+            kill "$(cat server_e2e.pid)" || true
+          fi
