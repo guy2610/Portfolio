@@ -102,12 +102,42 @@ jobs:
 
           cd "$WORKDIR"
           ./seffp_client --info --files=test.txt
+      
       - name: Run client second time (SSO relogin)
         run: |
           set -e
           cd e2e_workdir
-          ./seffp_client --info --files=test.txt
-          
+          ./seffp_client --info --files=test.txt > second_run.log
+
+      - name: Assert relogin (no registration on second run)
+        run: |
+          set -e
+          cd e2e_workdir
+
+          echo "==== Second run output ===="
+          cat second_run.log
+
+          if grep -q "825" second_run.log; then
+            echo "Unexpected registration on relogin"
+            exit 1
+          fi
+
+
+          if ! grep -q "827" second_run.log; then
+            echo "Relogin (827) not detected"
+            exit 1
+          fi
+      
+      - name: Create second file
+        run: |
+          echo "another file" > e2e_workdir/test2.txt
+
+      - name: Run client multi-file upload
+        run: |
+          set -e
+          cd e2e_workdir
+          ./seffp_client --info --files=test.txt,test2.txt
+
       - name: Stop server + print logs on failure
         if: failure()
         run: |
