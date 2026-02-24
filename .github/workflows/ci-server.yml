@@ -29,6 +29,6 @@ jobs:
 
       - name: Run pytest
         env:
-          PYTHONPATH: ${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol
+          PYTHONPATH=${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server
         run: |
           pytest -q Secure-Encrypted-File-Transfer-Protocol/tests/server
