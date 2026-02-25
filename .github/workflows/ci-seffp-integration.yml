@@ -174,12 +174,12 @@ jobs:
           sleep 0.2
 
           rm -f server_e2e.pid || true
-          : > server_e2e.log
+          : > "${{ github.workspace }}/server_e2e.log"
 
       - name: Start server (background) with SEFTP_MAX_FILE_SIZE=64
         env:
           SEFTP_MAX_FILE_SIZE: "64"
-          PYTHONPATH: ${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server
+          PYTHONPATH: "${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/server"
         run: |
           set -e
           cd Secure-Encrypted-File-Transfer-Protocol/server
