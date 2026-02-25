@@ -162,10 +162,6 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Resolve server root so we can import protocol framing helpers if needed (we won't)
-          HOST="127.0.0.1"
-          PORT="1234"
-
           python - <<'PY'
           import socket, struct, time, sys
 
