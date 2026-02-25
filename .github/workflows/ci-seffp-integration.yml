@@ -304,10 +304,19 @@ jobs:
             exit 1
           fi
 
-          python - <<PY
-          import json, pathlib
-          p = pathlib.Path("$FILE")
-          data = json.loads(p.read_text())
-          assert isinstance(data, dict)
-          print("clients_info entries:", len(data))
-          PY
+          python3 - <<'EOF'
+          import json, pathlib, os
+          filepath = os.environ.get('FILE', 'Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json')
+          p = pathlib.Path(filepath)
+          try:
+              data = json.loads(p.read_text())
+              if not isinstance(data, dict):
+                  print(f"Expected dict, got {type(data)}")
+                  exit(1)
+              print(f"clients_info entries: {len(data)}")
+          except Exception as e:
+              print(f"Failed to parse JSON: {e}")
+              exit(1)
+          EOF
+        env:
+          FILE: "Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json"
