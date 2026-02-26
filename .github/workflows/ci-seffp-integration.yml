@@ -154,7 +154,7 @@ jobs:
             done
             exit 1
           fi
-      
+
       - name: Restart server with small limits (for A)
         env:
           SEFTP_MAX_FILE_SIZE: "64"
@@ -187,8 +187,8 @@ jobs:
           nohup python -u server_async.py > ../../server_e2e.log 2>&1 &
           echo $! > ../../server_e2e.pid
           sleep 1
-      
-      - name: Limit (client): oversize file rejected
+
+      - name: "Limit (client): oversize file rejected"
         run: |
           set -euo pipefail
           WORKDIR="$(pwd)/e2e_workdir_limits"
@@ -198,15 +198,12 @@ jobs:
           echo "127.0.0.1:1234" > "$WORKDIR/transfer.info"
           echo "ci_limits_user" >> "$WORKDIR/transfer.info"
 
-          # create file > 64 bytes (max)
-          python - <<'PY'
-          from pathlib import Path
-          Path("e2e_workdir_limits/big.bin").write_bytes(b"A" * 200)
-          PY
-
           CLIENT_BIN="$(pwd)/build/seffp/seffp_client"
           cp "$CLIENT_BIN" "$WORKDIR/"
           cd "$WORKDIR"
+
+          # create file > 64 bytes (max)
+          python -c "from pathlib import Path; Path('big.bin').write_bytes(b'A'*200)"
 
           # expect failure
           set +e
@@ -230,10 +227,12 @@ jobs:
             echo "Expected 1607 in server log"
             exit 1
           fi
+
           if ! grep -q "bad_828_limits" ../server_e2e.log; then
             echo "Expected bad_828_limits reset reason"
             exit 1
           fi
+
           if ! grep -q "content_size too large" ../server_e2e.log; then
             echo "content_size too large"
             exit 1
@@ -304,19 +303,11 @@ jobs:
             exit 1
           fi
 
-          python3 - <<'EOF'
-          import json, pathlib, os
-          filepath = os.environ.get('FILE', 'Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json')
-          p = pathlib.Path(filepath)
-          try:
-              data = json.loads(p.read_text())
-              if not isinstance(data, dict):
-                  print(f"Expected dict, got {type(data)}")
-                  exit(1)
-              print(f"clients_info entries: {len(data)}")
-          except Exception as e:
-              print(f"Failed to parse JSON: {e}")
-              exit(1)
-          EOF
-        env:
-          FILE: "Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json"
+          python - <<PY
+          import json, pathlib
+          p = pathlib.Path("$FILE")
+          data = json.loads(p.read_text())
+          assert isinstance(data, dict)
+          print("clients_info entries:", len(data))
+          PY
+
