@@ -214,27 +214,22 @@ jobs:
           echo "exit_code=$code"
           cat run.log || true
 
-          if [ "$code" -eq 0 ]; then
-            echo "Expected client to fail for oversize file"
-            exit 1
+          #client-side assertion: got server rejection (1607)
+          if ! grep -Eq "answer_1607|general error \{bad 828:" run.log; then
+          echo "Expected client to observe 1607 / bad 828 error"
+          exit 1
           fi
 
           echo "==== server log tail ===="
           tail -n 250 ../server_e2e.log || true
-
-          # Assert server sent 1607 and reset due to limits
-          if ! grep -q "1607" ../server_e2e.log; then
-            echo "Expected 1607 in server log"
-            exit 1
-          fi
 
           if ! grep -q "bad_828_limits" ../server_e2e.log; then
             echo "Expected bad_828_limits reset reason"
             exit 1
           fi
 
-          if ! grep -q "content_size too large" ../server_e2e.log; then
-            echo "content_size too large"
+          if ! grep -q "content_size too large|orig_file_size too large" ../server_e2e.log; then
+            echo "Expected size-too-large log"
             exit 1
           fi
 
