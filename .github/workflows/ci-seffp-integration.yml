@@ -391,6 +391,25 @@ jobs:
 
           Write-Host "Server PID=$($p.Id)"
 
+      - name: Assert server stayed alive for 5s
+        shell: pwsh
+        run: |
+          $pidFile = Join-Path $env:GITHUB_WORKSPACE "server_win.pid"
+          if (-not (Test-Path $pidFile)) { throw "pid file missing" }
+          $serverPid = Get-Content $pidFile
+
+          Start-Sleep -Seconds 5
+          $p = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
+          if (-not $p) {
+            Write-Host "Server died within 5 seconds"
+            Write-Host "==== server stdout ===="
+            Get-Content (Join-Path $env:GITHUB_WORKSPACE "server_win.out.log") -Tail 400 -ErrorAction SilentlyContinue
+            Write-Host "==== server stderr ===="
+            Get-Content (Join-Path $env:GITHUB_WORKSPACE "server_win.err.log") -Tail 400 -ErrorAction SilentlyContinue
+            throw "server died early"
+          }
+          Write-Host "Server still alive after 5s"
+          
       - name: Wait for server port (Windows) + debug
         shell: pwsh
         run: |
@@ -410,6 +429,8 @@ jobs:
               $proc = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
               if (-not $proc) {
                 Write-Host "Server process is not running anymore"
+                $wmi = Get-CimInstance Win32_Process -Filter "ProcessId=$serverPid" -ErrorAction SilentlyContinue
+                if (-not $wmi) { Write-Host "Process already gone (cannot query cmdline)" }
                 break
               }
             }
@@ -429,14 +450,14 @@ jobs:
             Write-Host "server did not open port in time or server exited"
 
             Write-Host "==== server stdout ===="
-            if (Test-Path $OutLog) { Get-Content $OutLog -Tail 200 } else { Write-Host "(missing)" }
+            if (Test-Path $OutLog) { Get-Content $OutLog -Tail 400 } else { Write-Host "(missing)" }
 
             Write-Host "==== server stderr ===="
-            if (Test-Path $ErrLog) { Get-Content $ErrLog -Tail 200 } else { Write-Host "(missing)" }
+            if (Test-Path $ErrLog) { Get-Content $ErrLog -Tail 400 } else { Write-Host "(missing)" }
 
             if ($serverPid) {
-              $proc = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
-              if ($proc) { Write-Host "Server still running: $($proc.ProcessName) PID=$serverPid" }
+              $p = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
+              if ($p) { Write-Host "Server still running: $($p.ProcessName) PID=$serverPid" }
               else { Write-Host "Server not running (PID=$serverPid)" }
             }
 
