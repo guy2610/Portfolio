@@ -547,17 +547,15 @@ jobs:
         shell: pwsh
         run: |
           foreach ($f in @("server_win_limits.pid","server_win.pid")) {
-            $p = Join-Path $pwd $f
-            if (Test-Path $p) {
-              $pid = Get-Content $p
-              try { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue } catch {}
+            $pidPath = Join-Path $pwd $f
+            if (Test-Path $pidPath) {
+              $serverPid = Get-Content $pidPath
+              try {
+                Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue
+              } catch {}
             }
           }
-          Write-Host "==== server_win.log tail ===="
-          Get-Content (Join-Path $pwd "server_win.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
-          Write-Host "==== server_win_limits.log tail ===="
-          Get-Content (Join-Path $pwd "server_win_limits.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
-          
+
           Write-Host "==== server stdout tail ===="
           Get-Content (Join-Path $pwd "server_win.out.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
           Write-Host "==== server stderr tail ===="
