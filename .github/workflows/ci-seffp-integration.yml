@@ -306,3 +306,247 @@ jobs:
           print("clients_info entries:", len(data))
           PY
 
+  e2e-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    env:
+      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install server deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pycryptodome
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: "Secure-Encrypted-File-Transfer-Protocol/vcpkg.json"
+          vcpkgDirectory: "${{ github.workspace }}\\Secure-Encrypted-File-Transfer-Protocol\\vcpkg"
+
+      - name: Configure client
+        run: >
+          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build\seffp
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}\Secure-Encrypted-File-Transfer-Protocol\vcpkg\scripts\buildsystems\vcpkg.cmake
+
+      - name: Build client
+        run: cmake --build build\seffp --config Release
+
+      - name: Resolve client exe path
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "build\seffp\seffp_client.exe",
+            "build\seffp\Release\seffp_client.exe"
+          )
+          $exe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $exe) { throw "seffp_client.exe not found in expected locations" }
+          "CLIENT_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "CLIENT_EXE=$exe"
+
+      - name: Start server (background)
+        shell: pwsh
+        env:
+          PYTHONPATH: ${{ github.workspace }}\Secure-Encrypted-File-Transfer-Protocol\server
+        run: |
+          Set-Location Secure-Encrypted-File-Transfer-Protocol\server
+          "1234" | Out-File -Encoding ascii -NoNewline port.info
+
+          $p = Start-Process -FilePath "python" -ArgumentList "-u","server_async.py" -NoNewWindow -PassThru `
+                -RedirectStandardOutput "..\..\server_win.log" -RedirectStandardError "..\..\server_win.log"
+          $p.Id | Out-File -Encoding ascii -NoNewline "..\..\server_win.pid"
+          Start-Sleep -Seconds 2
+
+          Write-Host "Server PID=$($p.Id)"
+
+      - name: Wait for server port
+        shell: pwsh
+        run: |
+          python - <<'PY'
+          import socket, time, sys
+          host, port = "127.0.0.1", 1234
+          deadline = time.time() + 20
+          while time.time() < deadline:
+              try:
+                  with socket.create_connection((host, port), timeout=1):
+                      print("server is up")
+                      sys.exit(0)
+              except OSError:
+                  time.sleep(0.5)
+          print("server did not open port in time")
+          sys.exit(1)
+          PY
+
+      - name: Run first client (register + upload)
+        shell: pwsh
+        run: |
+          $work = Join-Path $pwd "e2e_workdir"
+          Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $work | Out-Null
+
+          "127.0.0.1:1234`nci_user" | Out-File -Encoding ascii -NoNewline (Join-Path $work "transfer.info")
+          "hello from ci" | Out-File -Encoding ascii -NoNewline (Join-Path $work "test.txt")
+
+          Copy-Item $env:CLIENT_EXE (Join-Path $work "seffp_client.exe")
+
+          Push-Location $work
+          .\seffp_client.exe --info --files=test.txt
+          Pop-Location
+
+      - name: Run second client (relogin)
+        shell: pwsh
+        run: |
+          $work = Join-Path $pwd "e2e_workdir"
+          Push-Location $work
+          .\seffp_client.exe --info --files=test.txt *> second_run.log
+          Get-Content second_run.log
+
+          $txt = Get-Content second_run.log -Raw
+          if ($txt -match "825") { throw "Unexpected registration on relogin (825)" }
+          if ($txt -notmatch "827") { throw "Relogin (827) not detected" }
+          Pop-Location
+
+      - name: Multi-file upload
+        shell: pwsh
+        run: |
+          $work = Join-Path $pwd "e2e_workdir"
+          "another file" | Out-File -Encoding ascii -NoNewline (Join-Path $work "test2.txt")
+          Push-Location $work
+          .\seffp_client.exe --info --files=test.txt,test2.txt
+          Pop-Location
+
+      - name: Parallel clients upload (5 clients)
+        shell: pwsh
+        run: |
+          $base = Join-Path $pwd "e2e_parallel"
+          Remove-Item -Recurse -Force $base -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $base | Out-Null
+
+          $N = 5
+          $procs = @()
+
+          for ($i=1; $i -le $N; $i++) {
+            $w = Join-Path $base "u$i"
+            New-Item -ItemType Directory -Path $w | Out-Null
+            "127.0.0.1:1234`nci_user_$i" | Out-File -Encoding ascii -NoNewline (Join-Path $w "transfer.info")
+            "hello from client $i" | Out-File -Encoding ascii -NoNewline (Join-Path $w "file_$i.txt")
+            Copy-Item $env:CLIENT_EXE (Join-Path $w "seffp_client.exe")
+
+            $p = Start-Process -FilePath (Join-Path $w "seffp_client.exe") `
+                  -ArgumentList @("--info","--files=file_$i.txt") `
+                  -WorkingDirectory $w -NoNewWindow -PassThru `
+                  -RedirectStandardOutput (Join-Path $w "run.log") `
+                  -RedirectStandardError (Join-Path $w "run.log")
+            $procs += $p
+          }
+
+          $failed = $false
+          foreach ($p in $procs) {
+            $p.WaitForExit()
+            if ($p.ExitCode -ne 0) { $failed = $true }
+          }
+
+          if ($failed) {
+            for ($i=1; $i -le $N; $i++) {
+              Write-Host "==== client $i log ===="
+              Get-Content (Join-Path $base "u$i\run.log") -ErrorAction SilentlyContinue
+            }
+            throw "At least one parallel client failed"
+          }
+
+      - name: Stop server (before limits restart)
+        shell: pwsh
+        run: |
+          $pidFile = Join-Path $pwd "server_win.pid"
+          if (Test-Path $pidFile) {
+            $pid = Get-Content $pidFile
+            try { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue } catch {}
+          }
+          Start-Sleep -Seconds 1
+          Get-Content (Join-Path $pwd "server_win.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
+
+      - name: Start server (background) with SEFTP_MAX_FILE_SIZE=64
+        shell: pwsh
+        env:
+          SEFTP_MAX_FILE_SIZE: "64"
+          PYTHONPATH: ${{ github.workspace }}\Secure-Encrypted-File-Transfer-Protocol\server
+        run: |
+          Set-Location Secure-Encrypted-File-Transfer-Protocol\server
+          "1234" | Out-File -Encoding ascii -NoNewline port.info
+
+          $p = Start-Process -FilePath "python" -ArgumentList "-u","server_async.py" -NoNewWindow -PassThru `
+                -RedirectStandardOutput "..\..\server_win_limits.log" -RedirectStandardError "..\..\server_win_limits.log"
+          $p.Id | Out-File -Encoding ascii -NoNewline "..\..\server_win_limits.pid"
+          Start-Sleep -Seconds 2
+          Write-Host "Server(limits) PID=$($p.Id)"
+
+      - name: Wait for server port (limits)
+        shell: pwsh
+        run: |
+          python - <<'PY'
+          import socket, time, sys
+          host, port = "127.0.0.1", 1234
+          deadline = time.time() + 20
+          while time.time() < deadline:
+              try:
+                  with socket.create_connection((host, port), timeout=1):
+                      print("server is up (limits)")
+                      sys.exit(0)
+              except OSError:
+                  time.sleep(0.5)
+          print("server did not open port in time (limits)")
+          sys.exit(1)
+          PY
+
+      - name: "Limit (client): oversize file rejected"
+        shell: pwsh
+        run: |
+          $work = Join-Path $pwd "e2e_workdir_limits"
+          Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $work | Out-Null
+
+          "127.0.0.1:1234`nci_limits_user" | Out-File -Encoding ascii -NoNewline (Join-Path $work "transfer.info")
+          Copy-Item $env:CLIENT_EXE (Join-Path $work "seffp_client.exe")
+
+          python -c "from pathlib import Path; Path(r'$work\big.bin').write_bytes(b'A'*200)"
+
+          Push-Location $work
+          cmd /c ".\seffp_client.exe --info --files=big.bin > run.log 2>&1"
+          Pop-Location
+
+          $log = Get-Content (Join-Path $work "run.log") -Raw
+          Write-Host $log
+
+          if ($log -notmatch "answer_1607|general error \{bad 828:") {
+            throw "Expected client to observe 1607 / bad 828 error"
+          }
+
+          $slog = Get-Content (Join-Path $pwd "server_win_limits.log") -Raw
+          if ($slog -notmatch "1607") { throw "Expected 1607 in server log" }
+          if ($slog -notmatch "bad_828_limits") { throw "Expected bad_828_limits reset reason" }
+
+      - name: Stop server (final)
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($f in @("server_win_limits.pid","server_win.pid")) {
+            $p = Join-Path $pwd $f
+            if (Test-Path $p) {
+              $pid = Get-Content $p
+              try { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue } catch {}
+            }
+          }
+          Write-Host "==== server_win.log tail ===="
+          Get-Content (Join-Path $pwd "server_win.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
+          Write-Host "==== server_win_limits.log tail ===="
+          Get-Content (Join-Path $pwd "server_win_limits.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
