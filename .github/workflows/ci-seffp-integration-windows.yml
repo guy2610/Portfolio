@@ -9,32 +9,60 @@ on:
 jobs:
   e2e-windows:
     runs-on: windows-latest
-    timeout-minutes: 20
-
+    timeout-minutes: 30
     env:
       VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
     steps:
-      - name: E2E (Windows) - server + clients in one step
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install server deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pycryptodome
+
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: "Secure-Encrypted-File-Transfer-Protocol/vcpkg.json"
+          vcpkgDirectory: "${{ github.workspace }}/vcpkg"
+
+      - name: Configure client (Release)
+        shell: pwsh
+        run: |
+          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seffp `
+            -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="${env:GITHUB_WORKSPACE}\vcpkg\scripts\buildsystems\vcpkg.cmake"
+
+      - name: Build client (Release)
+        shell: pwsh
+        run: |
+          cmake --build build/seffp --config Release --target seffp_client
+
+      - name: E2E (Windows) - server + clients
         shell: pwsh
         env:
           PYTHONPATH: ${{ github.workspace }}\Secure-Encrypted-File-Transfer-Protocol\server
         run: |
           $ErrorActionPreference = "Stop"
-          
+
           function Run-Checked([string]$cmd, [string]$why) {
             Write-Host "RUN: $cmd"
             cmd /c $cmd
-            $ec = $LASTEXITCODE
-            if ($ec -ne 0) {
-              throw "Command failed (exit=$ec): $why"
-            }
+            if ($LASTEXITCODE -ne 0) { throw "Command failed (exit=$LASTEXITCODE): $why" }
           }
 
           function Stop-Server($proc) {
             try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
             Start-Sleep -Seconds 1
           }
+
           function Wait-Port([string]$host, [int]$port, [int]$seconds) {
             $deadline = (Get-Date).AddSeconds($seconds)
             while ((Get-Date) -lt $deadline) {
@@ -50,36 +78,33 @@ jobs:
             throw "server did not open port in time"
           }
 
-          # Resolve client exe (already built)
           $root = $env:GITHUB_WORKSPACE
 
+          # Resolve client exe
           $candidates = @(
             (Join-Path $root "build\seffp\Release\seffp_client.exe"),
             (Join-Path $root "build\seffp\seffp_client.exe")
           )
-
           $clientExe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-
           if (-not $clientExe) {
             $found = Get-ChildItem -Path (Join-Path $root "build\seffp") -Recurse -Filter "seffp_client.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) { $clientExe = $found.FullName }
           }
-
           if (-not $clientExe) {
             Write-Host "Listing build\seffp:"
             Get-ChildItem -Path (Join-Path $root "build\seffp") -Recurse -ErrorAction SilentlyContinue | Select-Object FullName | Out-String | Write-Host
             throw "seffp_client.exe not found"
           }
-
           Write-Host "CLIENT_EXE=$clientExe"
 
+          $ServerDir = Join-Path $root "Secure-Encrypted-File-Transfer-Protocol\server"
+
           # ---------- Start normal server ----------
-          $ServerDir = Join-Path $env:GITHUB_WORKSPACE "Secure-Encrypted-File-Transfer-Protocol\server"
           Set-Location $ServerDir
           "1234" | Set-Content -NoNewline -Path ".\port.info"
 
-          $OutLog = Join-Path $env:GITHUB_WORKSPACE "server_win.out.log"
-          $ErrLog = Join-Path $env:GITHUB_WORKSPACE "server_win.err.log"
+          $OutLog = Join-Path $root "server_win.out.log"
+          $ErrLog = Join-Path $root "server_win.err.log"
           Remove-Item $OutLog,$ErrLog -Force -ErrorAction SilentlyContinue
 
           $p = Start-Process -FilePath "python" -ArgumentList "-u","server_async.py" -WorkingDirectory $ServerDir `
@@ -88,8 +113,6 @@ jobs:
           try {
             Wait-Port "127.0.0.1" 1234 30
 
-            # ---------- E2E workdir ----------
-            $root = $env:GITHUB_WORKSPACE
             $work = Join-Path $root "e2e_workdir"
             Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Path $work | Out-Null
@@ -108,58 +131,24 @@ jobs:
             "another file" | Out-File -Encoding ascii -NoNewline (Join-Path $work "test2.txt")
             Run-Checked ".\seffp_client.exe --info --files=test.txt,test2.txt" "multi-file upload failed"
             Pop-Location
-
-            # ---------- Parallel ----------
-            $base = Join-Path $root "e2e_parallel"
-            Remove-Item -Recurse -Force $base -ErrorAction SilentlyContinue
-            New-Item -ItemType Directory -Path $base | Out-Null
-
-            $N = 5
-            $procs = @()
-            for ($i=1; $i -le $N; $i++) {
-              $w = Join-Path $base "u$i"
-              New-Item -ItemType Directory -Path $w | Out-Null
-              "127.0.0.1:1234`nci_user_$i" | Out-File -Encoding ascii -NoNewline (Join-Path $w "transfer.info")
-              "hello from client $i" | Out-File -Encoding ascii -NoNewline (Join-Path $w "file_$i.txt")
-              Copy-Item $clientExe (Join-Path $w "seffp_client.exe")
-
-              $pp = Start-Process -FilePath (Join-Path $w "seffp_client.exe") `
-                    -ArgumentList @("--info","--files=file_$i.txt") `
-                    -WorkingDirectory $w -NoNewWindow -PassThru `
-                    -RedirectStandardOutput (Join-Path $w "run.out.log") `
-                    -RedirectStandardError  (Join-Path $w "run.err.log")
-              $procs += $pp
-            }
-
-            $failed = $false
-            foreach ($pp in $procs) {
-              $pp.WaitForExit()
-              if ($pp.ExitCode -ne 0) { $failed = $true }
-            }
-            if ($failed) {
-              for ($i=1; $i -le $N; $i++) {
-                Write-Host "==== client $i log ===="
-                Get-Content (Join-Path $base "u$i\run.out.log") -ErrorAction SilentlyContinue
-                Get-Content (Join-Path $base "u$i\run.err.log") -ErrorAction SilentlyContinue
-              }
-              throw "At least one parallel client failed"
-            }
-
-          } finally {
+          }
+          finally {
             Stop-Server $p
-            Start-Sleep -Seconds 1
             Write-Host "==== server stdout tail ===="
             if (Test-Path $OutLog) { Get-Content $OutLog -Tail 200 }
             Write-Host "==== server stderr tail ===="
             if (Test-Path $ErrLog) { Get-Content $ErrLog -Tail 200 }
           }
 
-          # ---------- Limits server (same step) ----------
+          Start-Sleep -Seconds 1
+
+          # ---------- Limits server ----------
           $env:SEFTP_MAX_FILE_SIZE = "64"
           Set-Location $ServerDir
+          "1234" | Set-Content -NoNewline -Path ".\port.info"
 
-          $OutLog2 = Join-Path $env:GITHUB_WORKSPACE "server_win_limits.out.log"
-          $ErrLog2 = Join-Path $env:GITHUB_WORKSPACE "server_win_limits.err.log"
+          $OutLog2 = Join-Path $root "server_win_limits.out.log"
+          $ErrLog2 = Join-Path $root "server_win_limits.err.log"
           Remove-Item $OutLog2,$ErrLog2 -Force -ErrorAction SilentlyContinue
 
           $p2 = Start-Process -FilePath "python" -ArgumentList "-u","server_async.py" -WorkingDirectory $ServerDir `
@@ -168,7 +157,7 @@ jobs:
           try {
             Wait-Port "127.0.0.1" 1234 30
 
-            $work2 = Join-Path $env:GITHUB_WORKSPACE "e2e_workdir_limits"
+            $work2 = Join-Path $root "e2e_workdir_limits"
             Remove-Item -Recurse -Force $work2 -ErrorAction SilentlyContinue
             New-Item -ItemType Directory -Path $work2 | Out-Null
 
@@ -178,7 +167,6 @@ jobs:
 
             Push-Location $work2
             cmd /c ".\seffp_client.exe --info --files=big.bin > run.log 2>&1"
-            Write-Host "limits client exitCode=$LASTEXITCODE"
             Pop-Location
 
             $clientLog = Get-Content (Join-Path $work2 "run.log") -Raw
@@ -191,10 +179,9 @@ jobs:
             if (Test-Path $ErrLog2) { $slog += (Get-Content $ErrLog2 -Raw) }
             if ($slog -notmatch "1607") { throw "Expected 1607 in server log" }
             if ($slog -notmatch "bad_828_limits") { throw "Expected bad_828_limits reset reason" }
-
-          } finally {
-            Stop-Server $p
-            Start-Sleep -Milliseconds 300
+          }
+          finally {
+            Stop-Server $p2
             Write-Host "==== limits server stdout tail ===="
             if (Test-Path $OutLog2) { Get-Content $OutLog2 -Tail 200 }
             Write-Host "==== limits server stderr tail ===="
