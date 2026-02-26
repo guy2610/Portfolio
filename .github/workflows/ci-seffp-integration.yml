@@ -228,7 +228,7 @@ jobs:
             exit 1
           fi
 
-          if ! grep -q "content_size too large|orig_file_size too large" ../server_e2e.log; then
+          if ! grep -Eq "orig_file_size too large|content_size too large" ../server_e2e.log; then
             echo "Expected size-too-large log"
             exit 1
           fi
