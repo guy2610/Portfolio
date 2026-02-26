@@ -362,8 +362,11 @@ jobs:
           Set-Location Secure-Encrypted-File-Transfer-Protocol\server
           "1234" | Out-File -Encoding ascii -NoNewline port.info
 
+          $out = Join-Path $pwd "..\..\server_win.out.log"
+          $err = Join-Path $pwd "..\..\server_win.err.log"
+
           $p = Start-Process -FilePath "python" -ArgumentList "-u","server_async.py" -NoNewWindow -PassThru `
-                -RedirectStandardOutput "..\..\server_win.log" -RedirectStandardError "..\..\server_win.log"
+                -RedirectStandardOutput $out -RedirectStandardError $err
           $p.Id | Out-File -Encoding ascii -NoNewline "..\..\server_win.pid"
           Start-Sleep -Seconds 2
 
@@ -484,10 +487,14 @@ jobs:
           Set-Location Secure-Encrypted-File-Transfer-Protocol\server
           "1234" | Out-File -Encoding ascii -NoNewline port.info
 
+          $out = Join-Path $pwd "..\..\server_win_limits.out.log"
+          $err = Join-Path $pwd "..\..\server_win_limits.err.log"
+
           $p = Start-Process -FilePath "python" -ArgumentList "-u","server_async.py" -NoNewWindow -PassThru `
-                -RedirectStandardOutput "..\..\server_win_limits.log" -RedirectStandardError "..\..\server_win_limits.log"
+                -RedirectStandardOutput $out -RedirectStandardError $err
           $p.Id | Out-File -Encoding ascii -NoNewline "..\..\server_win_limits.pid"
           Start-Sleep -Seconds 2
+
           Write-Host "Server(limits) PID=$($p.Id)"
 
       - name: Wait for server port (limits)
@@ -550,3 +557,8 @@ jobs:
           Get-Content (Join-Path $pwd "server_win.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
           Write-Host "==== server_win_limits.log tail ===="
           Get-Content (Join-Path $pwd "server_win_limits.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
+          
+          Write-Host "==== server stdout tail ===="
+          Get-Content (Join-Path $pwd "server_win.out.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
+          Write-Host "==== server stderr tail ===="
+          Get-Content (Join-Path $pwd "server_win.err.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
