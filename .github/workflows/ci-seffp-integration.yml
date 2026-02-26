@@ -354,34 +354,48 @@ jobs:
           "CLIENT_EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "CLIENT_EXE=$exe"
 
-      - name: Start server (background)
+      - name: Start server (Windows background)
         shell: pwsh
         env:
           PYTHONPATH: ${{ github.workspace }}\Secure-Encrypted-File-Transfer-Protocol\server
         run: |
-          Set-Location Secure-Encrypted-File-Transfer-Protocol\server
-          "1234" | Out-File -Encoding ascii -NoNewline port.info
+          $ServerDir = Join-Path $env:GITHUB_WORKSPACE "Secure-Encrypted-File-Transfer-Protocol\server"
+          Set-Location $ServerDir
+          "1234" | Set-Content -NoNewline -Path ".\port.info"
 
-          $out = Join-Path $pwd "..\..\server_win.out.log"
-          $err = Join-Path $pwd "..\..\server_win.err.log"
+          $OutLog = Join-Path $env:GITHUB_WORKSPACE "server_win.out.log"
+          $ErrLog = Join-Path $env:GITHUB_WORKSPACE "server_win.err.log"
+          Remove-Item $OutLog,$ErrLog -Force -ErrorAction SilentlyContinue
 
-          $p = Start-Process -FilePath "python" -ArgumentList "-u","server_async.py" -NoNewWindow -PassThru `
-                -RedirectStandardOutput $out -RedirectStandardError $err
-          $p.Id | Out-File -Encoding ascii -NoNewline "..\..\server_win.pid"
-          Start-Sleep -Seconds 2
+          $p = Start-Process -FilePath "python" -ArgumentList "-u","server_async.py" -WorkingDirectory $ServerDir `
+                -RedirectStandardOutput $OutLog -RedirectStandardError $ErrLog -PassThru
+          $p.Id | Set-Content -NoNewline -Path (Join-Path $env:GITHUB_WORKSPACE "server_win.pid")
 
+          Start-Sleep -Seconds 1
           Write-Host "Server PID=$($p.Id)"
 
-      - name: Wait for server port (Windows)
+      - name: Wait for server port (Windows) + debug
         shell: pwsh
         run: |
-          python -c "import socket,time,sys; host='127.0.0.1'; port=1234; deadline=time.time()+20; 
+          $pidFile = Join-Path $env:GITHUB_WORKSPACE "server_win.pid"
+          $OutLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.out.log"
+          $ErrLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.err.log"
+
+          python -c "import socket,time,sys; host='127.0.0.1'; port=1234; deadline=time.time()+20; ok=False
           while time.time()<deadline:
             try:
-              s=socket.create_connection((host,port),timeout=1); s.close(); print('server is up'); sys.exit(0)
+              s=socket.create_connection((host,port),timeout=1); s.close(); ok=True; break
             except OSError:
               time.sleep(0.5)
-          print('server did not open port in time'); sys.exit(1)"
+          sys.exit(0 if ok else 1)"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "server did not open port in time"
+            if (Test-Path $pidFile) { Write-Host ('PID=' + (Get-Content $pidFile)) }
+            Write-Host "==== server stdout ===="; if (Test-Path $OutLog) { Get-Content $OutLog -Tail 200 } else { Write-Host "(missing)" }
+            Write-Host "==== server stderr ===="; if (Test-Path $ErrLog) { Get-Content $ErrLog -Tail 200 } else { Write-Host "(missing)" }
+            exit 1
+          }
+          Write-Host "server is up"
 
       - name: Run first client (register + upload)
         shell: pwsh
@@ -441,8 +455,8 @@ jobs:
             $p = Start-Process -FilePath (Join-Path $w "seffp_client.exe") `
                   -ArgumentList @("--info","--files=file_$i.txt") `
                   -WorkingDirectory $w -NoNewWindow -PassThru `
-                  -RedirectStandardOutput (Join-Path $w "run.log") `
-                  -RedirectStandardError (Join-Path $w "run.log")
+                  -RedirectStandardOutput (Join-Path $w "run.out.log") `
+                  -RedirectStandardError  (Join-Path $w "run.err.log")
             $procs += $p
           }
 
@@ -455,7 +469,8 @@ jobs:
           if ($failed) {
             for ($i=1; $i -le $N; $i++) {
               Write-Host "==== client $i log ===="
-              Get-Content (Join-Path $base "u$i\run.log") -ErrorAction SilentlyContinue
+              Get-Content (Join-Path $base "u$i\run.out.log") -ErrorAction SilentlyContinue
+              Get-Content (Join-Path $base "u$i\run.err.log") -ErrorAction SilentlyContinue
             }
             throw "At least one parallel client failed"
           }
@@ -463,13 +478,17 @@ jobs:
       - name: Stop server (before limits restart)
         shell: pwsh
         run: |
-          $pidFile = Join-Path $pwd "server_win.pid"
+          $pidFile = Join-Path $env:GITHUB_WORKSPACE "server_win.pid"
           if (Test-Path $pidFile) {
-            $pid = Get-Content $pidFile
-            try { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue } catch {}
+            $serverPid = Get-Content $pidFile
+            Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue
           }
           Start-Sleep -Seconds 1
-          Get-Content (Join-Path $pwd "server_win.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
+
+          Write-Host "==== server stdout tail ===="
+          Get-Content (Join-Path $env:GITHUB_WORKSPACE "server_win.out.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
+          Write-Host "==== server stderr tail ===="
+          Get-Content (Join-Path $env:GITHUB_WORKSPACE "server_win.err.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
 
       - name: Start server (background) with SEFTP_MAX_FILE_SIZE=64
         shell: pwsh
@@ -493,20 +512,14 @@ jobs:
       - name: Wait for server port (limits)
         shell: pwsh
         run: |
-          python - <<'PY'
-          import socket, time, sys
-          host, port = "127.0.0.1", 1234
-          deadline = time.time() + 20
-          while time.time() < deadline:
-              try:
-                  with socket.create_connection((host, port), timeout=1):
-                      print("server is up (limits)")
-                      sys.exit(0)
-              except OSError:
-                  time.sleep(0.5)
-          print("server did not open port in time (limits)")
-          sys.exit(1)
-          PY
+          python -c "import socket,time,sys; host='127.0.0.1'; port=1234; deadline=time.time()+20; ok=False
+          while time.time()<deadline:
+            try:
+              s=socket.create_connection((host,port),timeout=1); s.close(); ok=True; break
+            except OSError:
+              time.sleep(0.5)
+          print('server is up (limits)' if ok else 'server did not open port in time (limits)')
+          sys.exit(0 if ok else 1)"
 
       - name: "Limit (client): oversize file rejected"
         shell: pwsh
@@ -524,7 +537,11 @@ jobs:
           cmd /c ".\seffp_client.exe --info --files=big.bin > run.log 2>&1"
           Pop-Location
 
-          $log = Get-Content (Join-Path $work "run.log") -Raw
+          $out = Join-Path $env:GITHUB_WORKSPACE "server_win_limits.out.log"
+          $err = Join-Path $env:GITHUB_WORKSPACE "server_win_limits.err.log"
+          $slog = ""
+          if (Test-Path $out) { $slog += (Get-Content $out -Raw) }
+          if (Test-Path $err) { $slog += (Get-Content $err -Raw) }
           Write-Host $log
 
           if ($log -notmatch "answer_1607|general error \{bad 828:") {
@@ -540,16 +557,14 @@ jobs:
         shell: pwsh
         run: |
           foreach ($f in @("server_win_limits.pid","server_win.pid")) {
-            $pidPath = Join-Path $pwd $f
+            $pidPath = Join-Path $env:GITHUB_WORKSPACE $f
             if (Test-Path $pidPath) {
               $serverPid = Get-Content $pidPath
-              try {
-                Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue
-              } catch {}
+              Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue
             }
           }
 
-          Write-Host "==== server stdout tail ===="
-          Get-Content (Join-Path $pwd "server_win.out.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
-          Write-Host "==== server stderr tail ===="
-          Get-Content (Join-Path $pwd "server_win.err.log") -ErrorAction SilentlyContinue | Select-Object -Last 200
+          foreach ($log in @("server_win.out.log","server_win.err.log","server_win_limits.out.log","server_win_limits.err.log")) {
+            Write-Host "==== $log tail ===="
+            Get-Content (Join-Path $env:GITHUB_WORKSPACE $log) -ErrorAction SilentlyContinue | Select-Object -Last 200
+          }
