@@ -94,12 +94,12 @@ jobs:
           echo "==== Second run output ===="
           cat second_run.log
 
-          if grep -q "825" second_run.log; then
+          if grep -q "request_825" second_run.log; then
             echo "Unexpected registration on relogin"
             exit 1
           fi
 
-          if ! grep -q "827" second_run.log; then
+          if ! grep -q "request_827" second_run.log; then
             echo "Relogin (827) not detected"
             exit 1
           fi
@@ -381,20 +381,35 @@ jobs:
           $OutLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.out.log"
           $ErrLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.err.log"
 
-          python -c "import socket,time,sys; host='127.0.0.1'; port=1234; deadline=time.time()+20; ok=False
-          while time.time()<deadline:
-            try:
-              s=socket.create_connection((host,port),timeout=1); s.close(); ok=True; break
-            except OSError:
-              time.sleep(0.5)
-          sys.exit(0 if ok else 1)"
-          if ($LASTEXITCODE -ne 0) {
+          $deadline = (Get-Date).AddSeconds(20)
+          $ok = $false
+
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $c = New-Object System.Net.Sockets.TcpClient
+              $iar = $c.BeginConnect("127.0.0.1", 1234, $null, $null)
+              if ($iar.AsyncWaitHandle.WaitOne(500)) {
+                $c.EndConnect($iar)
+                $c.Close()
+                $ok = $true
+                break
+              }
+              $c.Close()
+            } catch {
+            }
+            Start-Sleep -Milliseconds 500
+          }
+
+          if (-not $ok) {
             Write-Host "server did not open port in time"
             if (Test-Path $pidFile) { Write-Host ('PID=' + (Get-Content $pidFile)) }
-            Write-Host "==== server stdout ===="; if (Test-Path $OutLog) { Get-Content $OutLog -Tail 200 } else { Write-Host "(missing)" }
-            Write-Host "==== server stderr ===="; if (Test-Path $ErrLog) { Get-Content $ErrLog -Tail 200 } else { Write-Host "(missing)" }
+            Write-Host "==== server stdout ===="
+            if (Test-Path $OutLog) { Get-Content $OutLog -Tail 200 } else { Write-Host "(missing)" }
+            Write-Host "==== server stderr ===="
+            if (Test-Path $ErrLog) { Get-Content $ErrLog -Tail 200 } else { Write-Host "(missing)" }
             exit 1
           }
+
           Write-Host "server is up"
 
       - name: Run first client (register + upload)
@@ -535,22 +550,32 @@ jobs:
 
           Push-Location $work
           cmd /c ".\seffp_client.exe --info --files=big.bin > run.log 2>&1"
+          $exitCode = $LASTEXITCODE
           Pop-Location
+
+          $clientLog = Get-Content (Join-Path $work "run.log") -Raw
+          Write-Host "==== client run.log (exitCode=$exitCode) ===="
+          Write-Host $clientLog
+
+          if ($clientLog -notmatch "answer_1607|general error \{bad 828:") {
+            throw "Expected client to observe 1607 / bad 828 error"
+          }
 
           $out = Join-Path $env:GITHUB_WORKSPACE "server_win_limits.out.log"
           $err = Join-Path $env:GITHUB_WORKSPACE "server_win_limits.err.log"
           $slog = ""
           if (Test-Path $out) { $slog += (Get-Content $out -Raw) }
           if (Test-Path $err) { $slog += (Get-Content $err -Raw) }
-          Write-Host $log
 
-          if ($log -notmatch "answer_1607|general error \{bad 828:") {
-            throw "Expected client to observe 1607 / bad 828 error"
+          Write-Host "==== server limits combined log ===="
+          Write-Host $slog
+
+          if ($slog -notmatch "1607") {
+            throw "Expected 1607 in server log"
           }
-
-          $slog = Get-Content (Join-Path $pwd "server_win_limits.log") -Raw
-          if ($slog -notmatch "1607") { throw "Expected 1607 in server log" }
-          if ($slog -notmatch "bad_828_limits") { throw "Expected bad_828_limits reset reason" }
+          if ($slog -notmatch "bad_828_limits") {
+            throw "Expected bad_828_limits reset reason"
+          }
 
       - name: Stop server (final)
         if: always()
