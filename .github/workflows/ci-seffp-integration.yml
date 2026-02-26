@@ -361,17 +361,34 @@ jobs:
         run: |
           $ServerDir = Join-Path $env:GITHUB_WORKSPACE "Secure-Encrypted-File-Transfer-Protocol\server"
           Set-Location $ServerDir
+
           "1234" | Set-Content -NoNewline -Path ".\port.info"
 
           $OutLog = Join-Path $env:GITHUB_WORKSPACE "server_win.out.log"
           $ErrLog = Join-Path $env:GITHUB_WORKSPACE "server_win.err.log"
           Remove-Item $OutLog,$ErrLog -Force -ErrorAction SilentlyContinue
 
+          Write-Host "python:" (Get-Command python).Source
+          python --version
+          Write-Host "ServerDir=$ServerDir"
+          Write-Host "PYTHONPATH=$env:PYTHONPATH"
+          Write-Host "port.info:" (Get-Content .\port.info -ErrorAction SilentlyContinue)
+
           $p = Start-Process -FilePath "python" -ArgumentList "-u","server_async.py" -WorkingDirectory $ServerDir `
                 -RedirectStandardOutput $OutLog -RedirectStandardError $ErrLog -PassThru
-          $p.Id | Set-Content -NoNewline -Path (Join-Path $env:GITHUB_WORKSPACE "server_win.pid")
 
+          $p.Id | Set-Content -NoNewline -Path (Join-Path $env:GITHUB_WORKSPACE "server_win.pid")
           Start-Sleep -Seconds 1
+
+          if ($p.HasExited) {
+            Write-Host "Server process exited early. ExitCode=$($p.ExitCode)"
+            Write-Host "==== server stdout ===="
+            if (Test-Path $OutLog) { Get-Content $OutLog -Tail 200 } else { Write-Host "(missing)" }
+            Write-Host "==== server stderr ===="
+            if (Test-Path $ErrLog) { Get-Content $ErrLog -Tail 200 } else { Write-Host "(missing)" }
+            throw "Server died immediately"
+          }
+
           Write-Host "Server PID=$($p.Id)"
 
       - name: Wait for server port (Windows) + debug
@@ -381,32 +398,48 @@ jobs:
           $OutLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.out.log"
           $ErrLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.err.log"
 
-          $deadline = (Get-Date).AddSeconds(20)
+          $pid = ""
+          if (Test-Path $pidFile) { $pid = (Get-Content $pidFile) }
+          Write-Host "PID=$pid"
+
+          $deadline = (Get-Date).AddSeconds(30)
           $ok = $false
 
           while ((Get-Date) -lt $deadline) {
-            try {
-              $c = New-Object System.Net.Sockets.TcpClient
-              $iar = $c.BeginConnect("127.0.0.1", 1234, $null, $null)
-              if ($iar.AsyncWaitHandle.WaitOne(500)) {
-                $c.EndConnect($iar)
-                $c.Close()
-                $ok = $true
+            if ($pid) {
+              $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+              if (-not $proc) {
+                Write-Host "Server process is not running anymore"
                 break
               }
-              $c.Close()
-            } catch {
             }
-            Start-Sleep -Milliseconds 500
+
+            try {
+              $c = New-Object System.Net.Sockets.TcpClient
+              $c.Connect("127.0.0.1", 1234)
+              $c.Close()
+              $ok = $true
+              break
+            } catch {
+              Start-Sleep -Milliseconds 500
+            }
           }
 
           if (-not $ok) {
-            Write-Host "server did not open port in time"
-            if (Test-Path $pidFile) { Write-Host ('PID=' + (Get-Content $pidFile)) }
+            Write-Host "server did not open port in time or server exited"
+
             Write-Host "==== server stdout ===="
             if (Test-Path $OutLog) { Get-Content $OutLog -Tail 200 } else { Write-Host "(missing)" }
+
             Write-Host "==== server stderr ===="
             if (Test-Path $ErrLog) { Get-Content $ErrLog -Tail 200 } else { Write-Host "(missing)" }
+
+            if ($pid) {
+              $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+              if ($proc) { Write-Host "Server still running: $($proc.ProcessName) PID=$pid" }
+              else { Write-Host "Server not running (PID=$pid)" }
+            }
+
             exit 1
           }
 
