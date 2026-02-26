@@ -657,12 +657,16 @@ jobs:
           foreach ($f in @("server_win_limits.pid","server_win.pid")) {
             $pidPath = Join-Path $env:GITHUB_WORKSPACE $f
             if (Test-Path $pidPath) {
-              $serverPid = [int]((Get-Content $pidFile -Raw).Trim())
-              Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue
+              $serverPid = [int]((Get-Content $pidPath -Raw).Trim())
+              try { Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue } catch {}
+            } else {
+              Write-Host "pid file missing: $pidPath"
             }
           }
 
           foreach ($log in @("server_win.out.log","server_win.err.log","server_win_limits.out.log","server_win_limits.err.log")) {
+            $lp = Join-Path $env:GITHUB_WORKSPACE $log
             Write-Host "==== $log tail ===="
-            Get-Content (Join-Path $env:GITHUB_WORKSPACE $log) -ErrorAction SilentlyContinue | Select-Object -Last 200
+            if (Test-Path $lp) { Get-Content $lp -ErrorAction SilentlyContinue | Select-Object -Last 200 }
+            else { Write-Host "(missing)" }
           }
