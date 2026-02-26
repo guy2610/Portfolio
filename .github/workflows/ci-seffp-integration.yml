@@ -398,16 +398,16 @@ jobs:
           $OutLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.out.log"
           $ErrLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.err.log"
 
-          $pid = ""
-          if (Test-Path $pidFile) { $pid = (Get-Content $pidFile) }
-          Write-Host "PID=$pid"
+          $serverPid = ""
+          if (Test-Path $pidFile) { $serverPid = (Get-Content $pidFile) }
+          Write-Host "serverPid=$serverPid"
 
           $deadline = (Get-Date).AddSeconds(30)
           $ok = $false
 
           while ((Get-Date) -lt $deadline) {
-            if ($pid) {
-              $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+            if ($serverPid) {
+              $proc = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
               if (-not $proc) {
                 Write-Host "Server process is not running anymore"
                 break
@@ -434,10 +434,10 @@ jobs:
             Write-Host "==== server stderr ===="
             if (Test-Path $ErrLog) { Get-Content $ErrLog -Tail 200 } else { Write-Host "(missing)" }
 
-            if ($pid) {
-              $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
-              if ($proc) { Write-Host "Server still running: $($proc.ProcessName) PID=$pid" }
-              else { Write-Host "Server not running (PID=$pid)" }
+            if ($serverPid) {
+              $proc = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
+              if ($proc) { Write-Host "Server still running: $($proc.ProcessName) PID=$serverPid" }
+              else { Write-Host "Server not running (PID=$serverPid)" }
             }
 
             exit 1
@@ -470,8 +470,15 @@ jobs:
           Get-Content second_run.log
 
           $txt = Get-Content second_run.log -Raw
-          if ($txt -match "825") { throw "Unexpected registration on relogin (825)" }
-          if ($txt -notmatch "827") { throw "Relogin (827) not detected" }
+
+          if ($txt -match "request_825") {
+            throw "Unexpected registration on relogin (request_825)"
+          }
+
+          if ($txt -notmatch "request_827") {
+            throw "Relogin (request_827) not detected"
+          }
+
           Pop-Location
 
       - name: Multi-file upload
@@ -560,14 +567,23 @@ jobs:
       - name: Wait for server port (limits)
         shell: pwsh
         run: |
-          python -c "import socket,time,sys; host='127.0.0.1'; port=1234; deadline=time.time()+20; ok=False
-          while time.time()<deadline:
-            try:
-              s=socket.create_connection((host,port),timeout=1); s.close(); ok=True; break
-            except OSError:
-              time.sleep(0.5)
-          print('server is up (limits)' if ok else 'server did not open port in time (limits)')
-          sys.exit(0 if ok else 1)"
+          $deadline = (Get-Date).AddSeconds(30)
+          $ok = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $c = New-Object System.Net.Sockets.TcpClient
+              $c.Connect("127.0.0.1", 1234)
+              $c.Close()
+              $ok = $true
+              break
+            } catch {
+              Start-Sleep -Milliseconds 500
+            }
+          }
+          if (-not $ok) {
+            throw "server did not open port in time (limits)"
+          }
+          Write-Host "server is up (limits)"
 
       - name: "Limit (client): oversize file rejected"
         shell: pwsh
