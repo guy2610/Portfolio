@@ -377,10 +377,10 @@ jobs:
         run: |
           python -c "import socket,time,sys; host='127.0.0.1'; port=1234; deadline=time.time()+20; 
           while time.time()<deadline:
-          try:
-            s=socket.create_connection((host,port),timeout=1); s.close(); print('server is up'); sys.exit(0)
-          except OSError:
-            time.sleep(0.5)
+            try:
+              s=socket.create_connection((host,port),timeout=1); s.close(); print('server is up'); sys.exit(0)
+            except OSError:
+              time.sleep(0.5)
           print('server did not open port in time'); sys.exit(1)"
 
       - name: Run first client (register + upload)
