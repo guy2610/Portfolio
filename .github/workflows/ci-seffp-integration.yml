@@ -337,12 +337,27 @@ jobs:
           }
 
           # Resolve client exe (already built)
+          $root = $env:GITHUB_WORKSPACE
+
           $candidates = @(
-            "build\seffp\seffp_client.exe",
-            "build\seffp\Release\seffp_client.exe"
+            (Join-Path $root "build\seffp\Release\seffp_client.exe"),
+            (Join-Path $root "build\seffp\seffp_client.exe")
           )
+
           $clientExe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $clientExe) { throw "seffp_client.exe not found" }
+
+          if (-not $clientExe) {
+            $found = Get-ChildItem -Path (Join-Path $root "build\seffp") -Recurse -Filter "seffp_client.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) { $clientExe = $found.FullName }
+          }
+
+          if (-not $clientExe) {
+            Write-Host "Listing build\seffp:"
+            Get-ChildItem -Path (Join-Path $root "build\seffp") -Recurse -ErrorAction SilentlyContinue | Select-Object FullName | Out-String | Write-Host
+            throw "seffp_client.exe not found"
+          }
+
+          Write-Host "CLIENT_EXE=$clientExe"
 
           # ---------- Start normal server ----------
           $ServerDir = Join-Path $env:GITHUB_WORKSPACE "Secure-Encrypted-File-Transfer-Protocol\server"
