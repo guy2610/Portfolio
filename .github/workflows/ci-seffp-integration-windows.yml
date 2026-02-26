@@ -177,8 +177,8 @@ jobs:
             $slog = ""
             if (Test-Path $OutLog2) { $slog += (Get-Content $OutLog2 -Raw) }
             if (Test-Path $ErrLog2) { $slog += (Get-Content $ErrLog2 -Raw) }
-            if ($slog -notmatch "1607") { throw "Expected 1607 in server log" }
-            if ($slog -notmatch "bad_828_limits") { throw "Expected bad_828_limits reset reason" }
+            if ($slog -notmatch "bad 828: orig_file_size too large") { throw "Expected oversize rejection in server log" }
+            if ($slog -notmatch "reset transfer state reason=bad_828_limits") { throw "Expected bad_828_limits reset reason" }
           }
           finally {
             Stop-Server $p2
