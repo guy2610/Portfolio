@@ -331,13 +331,13 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgJsonGlob: "Secure-Encrypted-File-Transfer-Protocol/vcpkg.json"
-          vcpkgDirectory: "${{ github.workspace }}\\Secure-Encrypted-File-Transfer-Protocol\\vcpkg"
+          vcpkgDirectory: "${{ github.workspace }}/vcpkg"
 
       - name: Configure client
         run: >
-          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build\seffp
+          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seffp
           -DCMAKE_BUILD_TYPE=Release
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}\Secure-Encrypted-File-Transfer-Protocol\vcpkg\scripts\buildsystems\vcpkg.cmake
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake
 
       - name: Build client
         run: cmake --build build\seffp --config Release
