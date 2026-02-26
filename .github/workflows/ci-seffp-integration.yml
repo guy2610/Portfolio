@@ -320,7 +320,20 @@ jobs:
           PYTHONPATH: ${{ github.workspace }}\Secure-Encrypted-File-Transfer-Protocol\server
         run: |
           $ErrorActionPreference = "Stop"
+          
+          function Run-Checked([string]$cmd, [string]$why) {
+            Write-Host "RUN: $cmd"
+            cmd /c $cmd
+            $ec = $LASTEXITCODE
+            if ($ec -ne 0) {
+              throw "Command failed (exit=$ec): $why"
+            }
+          }
 
+          function Stop-Server($proc) {
+            try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+            Start-Sleep -Seconds 1
+          }
           function Wait-Port([string]$host, [int]$port, [int]$seconds) {
             $deadline = (Get-Date).AddSeconds($seconds)
             while ((Get-Date) -lt $deadline) {
@@ -385,14 +398,14 @@ jobs:
             Copy-Item $clientExe (Join-Path $work "seffp_client.exe")
 
             Push-Location $work
-            .\seffp_client.exe --info --files=test.txt
-            .\seffp_client.exe --info --files=test.txt *> second_run.log
+            Run-Checked ".\seffp_client.exe --info --files=test.txt" "first upload failed"
+            Run-Checked ".\seffp_client.exe --info --files=test.txt > second_run.log 2>&1" "relogin run failed"
             $txt = Get-Content second_run.log -Raw
             if ($txt -match "request_825") { throw "Unexpected registration on relogin" }
             if ($txt -notmatch "request_827") { throw "Relogin not detected" }
 
             "another file" | Out-File -Encoding ascii -NoNewline (Join-Path $work "test2.txt")
-            .\seffp_client.exe --info --files=test.txt,test2.txt
+            Run-Checked ".\seffp_client.exe --info --files=test.txt,test2.txt" "multi-file upload failed"
             Pop-Location
 
             # ---------- Parallel ----------
@@ -432,8 +445,8 @@ jobs:
             }
 
           } finally {
-            try { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } catch {}
-            Start-Sleep -Milliseconds 300
+            Stop-Server $p
+            Start-Sleep -Seconds 1
             Write-Host "==== server stdout tail ===="
             if (Test-Path $OutLog) { Get-Content $OutLog -Tail 200 }
             Write-Host "==== server stderr tail ===="
@@ -464,6 +477,7 @@ jobs:
 
             Push-Location $work2
             cmd /c ".\seffp_client.exe --info --files=big.bin > run.log 2>&1"
+            Write-Host "limits client exitCode=$LASTEXITCODE"
             Pop-Location
 
             $clientLog = Get-Content (Join-Path $work2 "run.log") -Raw
@@ -478,7 +492,7 @@ jobs:
             if ($slog -notmatch "bad_828_limits") { throw "Expected bad_828_limits reset reason" }
 
           } finally {
-            try { Stop-Process -Id $p2.Id -Force -ErrorAction SilentlyContinue } catch {}
+            Stop-Server $p
             Start-Sleep -Milliseconds 300
             Write-Host "==== limits server stdout tail ===="
             if (Test-Path $OutLog2) { Get-Content $OutLog2 -Tail 200 }
