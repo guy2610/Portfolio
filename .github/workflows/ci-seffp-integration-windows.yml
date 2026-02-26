@@ -63,12 +63,12 @@ jobs:
             Start-Sleep -Seconds 1
           }
 
-          function Wait-Port([string]$host, [int]$port, [int]$seconds) {
+          function Wait-Port([string]$hostname, [int]$port, [int]$seconds) {
             $deadline = (Get-Date).AddSeconds($seconds)
             while ((Get-Date) -lt $deadline) {
               try {
                 $c = New-Object System.Net.Sockets.TcpClient
-                $c.Connect($host, $port)
+                $c.Connect($hostname, $port)
                 $c.Close()
                 return
               } catch {
