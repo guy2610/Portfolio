@@ -396,20 +396,23 @@ jobs:
         run: |
           $pidFile = Join-Path $env:GITHUB_WORKSPACE "server_win.pid"
           if (-not (Test-Path $pidFile)) { throw "pid file missing" }
-          $serverPid = Get-Content $pidFile
+
+          $serverPid = [int]((Get-Content $pidFile -Raw).Trim())
 
           Start-Sleep -Seconds 5
           $p = Get-Process -Id $serverPid -ErrorAction SilentlyContinue
           if (-not $p) {
-            Write-Host "Server died within 5 seconds"
+            Write-Host "Server died within 5 seconds (or PID parse issue)"
+            Write-Host "PID raw:" (Get-Content $pidFile -Raw)
+
             Write-Host "==== server stdout ===="
             Get-Content (Join-Path $env:GITHUB_WORKSPACE "server_win.out.log") -Tail 400 -ErrorAction SilentlyContinue
             Write-Host "==== server stderr ===="
             Get-Content (Join-Path $env:GITHUB_WORKSPACE "server_win.err.log") -Tail 400 -ErrorAction SilentlyContinue
             throw "server died early"
           }
-          Write-Host "Server still alive after 5s"
-          
+          Write-Host "Server still alive after 5s (PID=$serverPid)"
+
       - name: Wait for server port (Windows) + debug
         shell: pwsh
         run: |
@@ -417,8 +420,8 @@ jobs:
           $OutLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.out.log"
           $ErrLog  = Join-Path $env:GITHUB_WORKSPACE "server_win.err.log"
 
-          $serverPid = ""
-          if (Test-Path $pidFile) { $serverPid = (Get-Content $pidFile) }
+          $serverPid = $null
+          if (Test-Path $pidFile) { $serverPid = [int]((Get-Content $pidFile -Raw).Trim()) }
           Write-Host "serverPid=$serverPid"
 
           $deadline = (Get-Date).AddSeconds(30)
@@ -556,7 +559,7 @@ jobs:
         run: |
           $pidFile = Join-Path $env:GITHUB_WORKSPACE "server_win.pid"
           if (Test-Path $pidFile) {
-            $serverPid = Get-Content $pidFile
+            $serverPid = [int]((Get-Content $pidFile -Raw).Trim())
             Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue
           }
           Start-Sleep -Seconds 1
@@ -654,7 +657,7 @@ jobs:
           foreach ($f in @("server_win_limits.pid","server_win.pid")) {
             $pidPath = Join-Path $env:GITHUB_WORKSPACE $f
             if (Test-Path $pidPath) {
-              $serverPid = Get-Content $pidPath
+              $serverPid = [int]((Get-Content $pidFile -Raw).Trim())
               Stop-Process -Id $serverPid -Force -ErrorAction SilentlyContinue
             }
           }
