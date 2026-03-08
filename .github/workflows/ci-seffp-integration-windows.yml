@@ -2,7 +2,7 @@ name: CI - SEFFP Integration - Windows (E2E)
 
 on:
   push:
-    branches: [ "main", "stage3-ci" ]
+    branches: [ "**" ]
   pull_request:
   workflow_dispatch:
 
