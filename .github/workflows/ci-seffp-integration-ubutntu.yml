@@ -288,20 +288,30 @@ jobs:
           echo "Server fully stopped"
           tail -n 200 server_e2e.log || true
 
-      - name: Assert clients_info persisted
+      - name: Assert SQLite DB persisted
         run: |
           set -e
-          FILE="Secure-Encrypted-File-Transfer-Protocol/server/data/clients_info.json"
+          FILE="Secure-Encrypted-File-Transfer-Protocol/server/data/seftp_server_sql.db"
 
           if [ ! -f "$FILE" ]; then
-            echo "clients_info.json not found"
+            echo "SQLite DB not found"
             exit 1
           fi
 
           python - <<PY
-          import json, pathlib
-          p = pathlib.Path("$FILE")
-          data = json.loads(p.read_text())
-          assert isinstance(data, dict)
-          print("clients_info entries:", len(data))
+          import sqlite3
+          import pathlib
+
+          p = pathlib.Path("Secure-Encrypted-File-Transfer-Protocol/server/data/seftp_server_sql.db")
+          con = sqlite3.connect(p)
+          cur = con.cursor()
+
+          cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='Clients'")
+          assert cur.fetchone() is not None, "Clients table missing"
+
+          cur.execute("SELECT COUNT(*) FROM Clients")
+          count = cur.fetchone()[0]
+          print("clients rows:", count)
+
+          con.close()
           PY
