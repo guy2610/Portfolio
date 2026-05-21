@@ -1,4 +1,4 @@
-name: CI - SEFFP Client (CMake + GTest)
+name: CI - SEFTP Client (CMake + GTest)
 
 on:
   push:

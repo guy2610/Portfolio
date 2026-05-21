@@ -1,4 +1,4 @@
-name: CI - SEFFP Integration - Windows (E2E)
+name: CI - SEFTP Integration - Windows (E2E)
 
 on:
   push:
@@ -43,7 +43,7 @@ jobs:
       - name: Build client (Release)
         shell: pwsh
         run: |
-          cmake --build build/seffp --config Release --target seffp_client
+          cmake --build build/seffp --config Release --target seftp_client
 
       - name: E2E (Windows) - server + clients
         shell: pwsh
@@ -82,18 +82,18 @@ jobs:
 
           # Resolve client exe
           $candidates = @(
-            (Join-Path $root "build\seffp\Release\seffp_client.exe"),
-            (Join-Path $root "build\seffp\seffp_client.exe")
+            (Join-Path $root "build\seffp\Release\seftp_client.exe"),
+            (Join-Path $root "build\seffp\seftp_client.exe")
           )
           $clientExe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $clientExe) {
-            $found = Get-ChildItem -Path (Join-Path $root "build\seffp") -Recurse -Filter "seffp_client.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $found = Get-ChildItem -Path (Join-Path $root "build\seffp") -Recurse -Filter "seftp_client.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) { $clientExe = $found.FullName }
           }
           if (-not $clientExe) {
             Write-Host "Listing build\seffp:"
             Get-ChildItem -Path (Join-Path $root "build\seffp") -Recurse -ErrorAction SilentlyContinue | Select-Object FullName | Out-String | Write-Host
-            throw "seffp_client.exe not found"
+            throw "seftp_client.exe not found"
           }
           Write-Host "CLIENT_EXE=$clientExe"
 
@@ -119,17 +119,17 @@ jobs:
 
             "127.0.0.1:1234`nci_user" | Out-File -Encoding ascii -NoNewline (Join-Path $work "transfer.info")
             "hello from ci" | Out-File -Encoding ascii -NoNewline (Join-Path $work "test.txt")
-            Copy-Item $clientExe (Join-Path $work "seffp_client.exe")
+            Copy-Item $clientExe (Join-Path $work "seftp_client.exe")
 
             Push-Location $work
-            Run-Checked ".\seffp_client.exe --info --files=test.txt" "first upload failed"
-            Run-Checked ".\seffp_client.exe --info --files=test.txt > second_run.log 2>&1" "relogin run failed"
+            Run-Checked ".\seftp_client.exe --info --files=test.txt" "first upload failed"
+            Run-Checked ".\seftp_client.exe --info --files=test.txt > second_run.log 2>&1" "relogin run failed"
             $txt = Get-Content second_run.log -Raw
             if ($txt -match "request_825") { throw "Unexpected registration on relogin" }
             if ($txt -notmatch "request_827") { throw "Relogin not detected" }
 
             "another file" | Out-File -Encoding ascii -NoNewline (Join-Path $work "test2.txt")
-            Run-Checked ".\seffp_client.exe --info --files=test.txt,test2.txt" "multi-file upload failed"
+            Run-Checked ".\seftp_client.exe --info --files=test.txt,test2.txt" "multi-file upload failed"
             Pop-Location
           }
           finally {
@@ -162,11 +162,11 @@ jobs:
             New-Item -ItemType Directory -Path $work2 | Out-Null
 
             "127.0.0.1:1234`nci_limits_user" | Out-File -Encoding ascii -NoNewline (Join-Path $work2 "transfer.info")
-            Copy-Item $clientExe (Join-Path $work2 "seffp_client.exe")
+            Copy-Item $clientExe (Join-Path $work2 "seftp_client.exe")
             python -c "from pathlib import Path; Path(r'$work2\big.bin').write_bytes(b'A'*200)"
 
             Push-Location $work2
-            cmd /c ".\seffp_client.exe --info --files=big.bin > run.log 2>&1"
+            cmd /c ".\seftp_client.exe --info --files=big.bin > run.log 2>&1"
             Pop-Location
 
             $clientLog = Get-Content (Join-Path $work2 "run.log") -Raw
