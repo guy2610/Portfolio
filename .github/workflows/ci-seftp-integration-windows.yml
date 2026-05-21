@@ -36,14 +36,14 @@ jobs:
       - name: Configure client (Release)
         shell: pwsh
         run: |
-          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seffp `
+          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seftp `
             -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_TOOLCHAIN_FILE="${env:GITHUB_WORKSPACE}\vcpkg\scripts\buildsystems\vcpkg.cmake"
 
       - name: Build client (Release)
         shell: pwsh
         run: |
-          cmake --build build/seffp --config Release --target seftp_client
+          cmake --build build/seftp --config Release --target seftp_client
 
       - name: E2E (Windows) - server + clients
         shell: pwsh
@@ -82,17 +82,17 @@ jobs:
 
           # Resolve client exe
           $candidates = @(
-            (Join-Path $root "build\seffp\Release\seftp_client.exe"),
-            (Join-Path $root "build\seffp\seftp_client.exe")
+            (Join-Path $root "build\seftp\Release\seftp_client.exe"),
+            (Join-Path $root "build\seftp\seftp_client.exe")
           )
           $clientExe = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
           if (-not $clientExe) {
-            $found = Get-ChildItem -Path (Join-Path $root "build\seffp") -Recurse -Filter "seftp_client.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $found = Get-ChildItem -Path (Join-Path $root "build\seftp") -Recurse -Filter "seftp_client.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) { $clientExe = $found.FullName }
           }
           if (-not $clientExe) {
-            Write-Host "Listing build\seffp:"
-            Get-ChildItem -Path (Join-Path $root "build\seffp") -Recurse -ErrorAction SilentlyContinue | Select-Object FullName | Out-String | Write-Host
+            Write-Host "Listing build\seftp:"
+            Get-ChildItem -Path (Join-Path $root "build\seftp") -Recurse -ErrorAction SilentlyContinue | Select-Object FullName | Out-String | Write-Host
             throw "seftp_client.exe not found"
           }
           Write-Host "CLIENT_EXE=$clientExe"

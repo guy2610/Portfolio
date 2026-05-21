@@ -28,12 +28,12 @@ jobs:
 
       - name: Configure
         run: >
-          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seffp
+          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seftp
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/vcpkg/scripts/buildsystems/vcpkg.cmake
 
       - name: Build
-        run: cmake --build build/seffp --config Release
+        run: cmake --build build/seftp --config Release
 
       - name: Test
-        run: ctest --test-dir build/seffp -C Release --output-on-failure
+        run: ctest --test-dir build/seftp -C Release --output-on-failure
