@@ -1,4 +1,4 @@
-name: CI - SEFFP Integration - Ubuntu (E2E)
+name: CI - SEFTP Integration - Ubuntu (E2E)
 
 on:
   push:
@@ -35,12 +35,12 @@ jobs:
 
       - name: Configure client
         run: >
-          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seffp
+          cmake -S Secure-Encrypted-File-Transfer-Protocol -B build/seftp
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/Secure-Encrypted-File-Transfer-Protocol/vcpkg/scripts/buildsystems/vcpkg.cmake
 
       - name: Build client
-        run: cmake --build build/seffp --config Release
+        run: cmake --build build/seftp --config Release
 
       - name: Start server (background)
         env:
@@ -79,17 +79,17 @@ jobs:
           echo "ci_user" >> "$WORKDIR/transfer.info"
           echo "hello from ci" > "$WORKDIR/test.txt"
 
-          CLIENT_BIN="$(pwd)/build/seffp/seffp_client"
+          CLIENT_BIN="$(pwd)/build/seftp/seftp_client"
           cp "$CLIENT_BIN" "$WORKDIR/"
 
           cd "$WORKDIR"
-          ./seffp_client --info --files=test.txt
+          ./seftp_client --info --files=test.txt
 
       - name: Run second client (relogin)
         run: |
           set -e
           cd e2e_workdir
-          ./seffp_client --info --files=test.txt > second_run.log
+          ./seftp_client --info --files=test.txt > second_run.log
 
           echo "==== Second run output ===="
           cat second_run.log
@@ -109,12 +109,12 @@ jobs:
           set -e
           echo "another file" > e2e_workdir/test2.txt
           cd e2e_workdir
-          ./seffp_client --info --files=test.txt,test2.txt
+          ./seftp_client --info --files=test.txt,test2.txt
 
       - name: Parallel clients upload (5 clients)
         run: |
           set -euo pipefail
-          CLIENT_BIN="$(pwd)/build/seffp/seffp_client"
+          CLIENT_BIN="$(pwd)/build/seftp/seftp_client"
 
           BASE="$(pwd)/e2e_parallel"
           rm -rf "$BASE"
@@ -134,7 +134,7 @@ jobs:
           for i in $(seq 1 $N); do
             (
               cd "$BASE/u$i"
-              ./seffp_client --info --files="file_$i.txt" > "run.log" 2>&1
+              ./seftp_client --info --files="file_$i.txt" > "run.log" 2>&1
             ) &
             pids="$pids $!"
           done
@@ -198,7 +198,7 @@ jobs:
           echo "127.0.0.1:1234" > "$WORKDIR/transfer.info"
           echo "ci_limits_user" >> "$WORKDIR/transfer.info"
 
-          CLIENT_BIN="$(pwd)/build/seffp/seffp_client"
+          CLIENT_BIN="$(pwd)/build/seftp/seftp_client"
           cp "$CLIENT_BIN" "$WORKDIR/"
           cd "$WORKDIR"
 
@@ -207,7 +207,7 @@ jobs:
 
           # expect failure
           set +e
-          ./seffp_client --info --files=big.bin > run.log 2>&1
+          ./seftp_client --info --files=big.bin > run.log 2>&1
           code=$?
           set -e
 

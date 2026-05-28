@@ -1,4 +1,4 @@
-name: CI - SEFFP Server (pytest)
+name: CI - SEFTP Server (pytest)
 
 on:
   push:
