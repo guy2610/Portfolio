@@ -123,6 +123,17 @@ jobs:
 
             Push-Location $work
             Run-Checked ".\seftp_client.exe --info --files=test.txt" "first upload failed"
+            $fingerprintPath = Join-Path $work "server.fingerprint"
+            if (-not (Test-Path $fingerprintPath)) {
+              throw "server.fingerprint was not created by Stage 7 TOFU"
+            }
+
+            if ((Get-Item $fingerprintPath).Length -eq 0) {
+              throw "server.fingerprint is empty"
+            }
+
+            Write-Host "Stage 7 TOFU fingerprint:"
+            Get-Content $fingerprintPath
             Run-Checked ".\seftp_client.exe --info --files=test.txt > second_run.log 2>&1" "relogin run failed"
             $txt = Get-Content second_run.log -Raw
             if ($txt -match "request_825") { throw "Unexpected registration on relogin" }
