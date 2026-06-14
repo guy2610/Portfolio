@@ -124,7 +124,7 @@ jobs:
           cd e2e_workdir
           ./seftp_client --info --files=test.txt,test2.txt
       
-            - name: Streaming upload boundary files
+      - name: Streaming upload boundary files
         run: |
           set -euo pipefail
 
