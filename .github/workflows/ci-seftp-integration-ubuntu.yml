@@ -123,6 +123,44 @@ jobs:
           echo "another file" > e2e_workdir/test2.txt
           cd e2e_workdir
           ./seftp_client --info --files=test.txt,test2.txt
+      
+            - name: Streaming upload boundary files
+        run: |
+          set -euo pipefail
+
+          cd e2e_workdir
+
+          python - <<'PY'
+          from pathlib import Path
+          Path("stream_15.bin").write_bytes(b"A" * 15)
+          Path("stream_16.bin").write_bytes(b"B" * 16)
+          Path("stream_17.bin").write_bytes(b"C" * 17)
+          Path("stream_65536.bin").write_bytes(b"D" * 65536)
+          Path("stream_random_1mb.bin").write_bytes(bytes((i % 251 for i in range(1024 * 1024))))
+          PY
+
+          ./seftp_client --info --files=stream_15.bin,stream_16.bin,stream_17.bin,stream_65536.bin,stream_random_1mb.bin
+
+          cd ..
+
+          for f in stream_15.bin stream_16.bin stream_17.bin stream_65536.bin stream_random_1mb.bin; do
+            SRC="e2e_workdir/$f"
+            DST="Secure-Encrypted-File-Transfer-Protocol/server/data/uploads/ci_user/$f"
+
+            if [ ! -f "$DST" ]; then
+              echo "Missing uploaded file: $DST"
+              echo "==== server log tail ===="
+              tail -n 250 server_e2e.log || true
+              exit 1
+            fi
+
+            if ! cmp -s "$SRC" "$DST"; then
+              echo "Uploaded file mismatch: $f"
+              exit 1
+            fi
+          done
+
+          echo "Streaming boundary uploads matched byte-for-byte"
 
       - name: Parallel clients upload (5 clients)
         run: |
