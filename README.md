@@ -60,7 +60,7 @@ Includes a detailed algorithm description and performance metrics.
   - System call implementations
   - Linux namespaces (PID, mount)
   - Preprocessor simulations
-  - Simple assembler
+  - [Two-pass assembler](https://github.com/guy2610/c-two-pass-assembler) — original course project, grade: 85
   - Bit-level operations  
   These projects demonstrate a deep understanding of memory, processes, and OS internals.
 
