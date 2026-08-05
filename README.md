@@ -39,7 +39,7 @@ Includes protocol specification, architecture notes, and a prebuilt Windows clie
 
 A computer vision project implementing robust detection and validation of a 3×3 colored marker grid.
 
-**Location:** `marker-coverage/`
+**Repository:** https://github.com/guy2610/marker-coverage-estimator
 
 **Key aspects:**
 - Image segmentation in HSV color space
